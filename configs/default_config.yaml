@@ -1,0 +1,131 @@
+# ============================================================
+# IEMS - Intelligent Energy Management Simulator
+# Default Configuration
+# configs/default_config.yaml
+# ============================================================
+
+project:
+  name: "IEMS - Intelligent Energy Management Simulator"
+  version: "1.0.0"
+  description: "Solar + battery simulation and control for Indian households"
+
+# ── Location (default: Mathura, UP — matches dataset region) ──────────────────
+location:
+  name: "Mathura"
+  latitude: 27.4924
+  longitude: 77.6737
+  timezone: "Asia/Kolkata"
+  state: "Uttar Pradesh"
+  district: "Mathura"
+  altitude_m: 182
+
+# ── Solar PV System ───────────────────────────────────────────────────────────
+solar:
+  panel_capacity_kw: 3.0          # kWp installed capacity
+  panel_efficiency: 0.20          # 20% module efficiency
+  temperature_coefficient: -0.004 # Power loss per °C above STC (25°C)
+  system_losses: 0.14             # Total losses: wiring, dust, shading (14%)
+  tilt_angle: 27.0                # Panel tilt (≈ latitude for max annual yield)
+  azimuth: 180.0                  # South-facing (180° = true south)
+  albedo: 0.25                    # Ground reflectivity
+  module_type: "glass_glass"      # For pvlib temperature model
+
+# ── Battery Storage System ────────────────────────────────────────────────────
+battery:
+  capacity_kwh: 10.0              # Usable capacity in kWh
+  max_charge_rate_kw: 3.0         # Maximum charge power (C-rate ≈ 0.3C)
+  max_discharge_rate_kw: 3.0      # Maximum discharge power
+  round_trip_efficiency: 0.90     # 90% round-trip (charge × discharge)
+  min_soc: 0.10                   # 10% — protect battery from deep discharge
+  max_soc: 0.95                   # 95% — protect from overcharge
+  initial_soc: 0.50               # Starting state of charge for simulation
+  # Simple linear degradation model
+  cycle_life: 3000                # Expected cycles at 80% DoD
+  calendar_life_years: 10         # Calendar degradation baseline
+
+# ── Grid Model (UP Electricity — DVVNL / PVVNL) ──────────────────────────────
+grid:
+  voltage_v: 230
+  frequency_hz: 50
+  # Residential slab tariffs (₹/kWh) — UP 2023-24
+  tariff_slabs:
+    - units_upto: 100
+      rate: 3.35
+    - units_upto: 150
+      rate: 3.85
+    - units_upto: 300
+      rate: 5.00
+    - units_upto: 500
+      rate: 5.50
+    - units_upto: .inf             # Above 500 units
+      rate: 6.00
+  fixed_charge_per_month_inr: 125.0
+  net_metering_rate_inr: 2.50     # ₹/kWh exported back to grid
+  # Load shedding (outage) model — sourced from dataset
+  model_outages: true
+  # When outages are not from data, fall back to statistical model
+  fallback_outage_hours_per_day: 4.0   # Typical UP rural/semi-urban
+  outage_peak_hours: [10, 14, 18, 22]  # Hours when outages are more likely
+
+# ── Simulation Settings ───────────────────────────────────────────────────────
+simulation:
+  timestep_minutes: 15            # Simulation resolution (15-min matches pvlib)
+  episode_days: 30                # One episode = 30 days
+  eval_days: 90                   # Evaluation run length (3 months)
+  seed: 42
+
+# ── DQN Hyperparameters (Stable-Baselines3 DQN) ──────────────────────────────
+dqn:
+  learning_rate: 0.0003
+  batch_size: 64
+  buffer_size: 100000             # Experience replay buffer
+  gamma: 0.99                     # Discount factor
+  exploration_fraction: 0.20      # Fraction of training with epsilon decay
+  exploration_initial_eps: 1.0
+  exploration_final_eps: 0.05
+  target_update_interval: 1000    # Steps between target network updates
+  learning_starts: 2000           # Steps before learning begins
+  train_freq: 4                   # Update every N steps
+  total_timesteps: 500000         # Total training steps
+  # Network architecture
+  policy: "MlpPolicy"
+  net_arch: [256, 256]            # Two hidden layers, 256 units each
+  # Action space (discrete)
+  # 0: idle  1: charge_from_solar  2: charge_from_grid  3: discharge_to_load
+  n_actions: 4
+
+# ── MPC Settings ─────────────────────────────────────────────────────────────
+mpc:
+  horizon_hours: 24               # Look-ahead window
+  timestep_minutes: 15            # Must match simulation.timestep_minutes
+  forecast_method: "persistence"  # "persistence" | "rolling_24h_avg"
+  solver: "ECOS"                  # cvxpy solver (ECOS is fast, free)
+
+# ── System Sizing Optimizer ───────────────────────────────────────────────────
+sizing:
+  # Discrete search grid
+  panel_sizes_kw: [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0]
+  battery_sizes_kwh: [0.0, 5.0, 7.5, 10.0, 15.0, 20.0]
+  # Cost assumptions (₹) — 2024 Indian market
+  panel_cost_per_kw: 45000        # ₹/kWp (panels + inverter + installation)
+  battery_cost_per_kwh: 15000     # ₹/kWh (Li-ion LFP)
+  balance_of_system_cost: 10000   # ₹ fixed (wiring, mounting, meter)
+  # Government subsidies (PM Surya Ghar Muft Bijli Yojana)
+  subsidy_rate_up_to_2kw: 0.40   # 40% subsidy on first 2 kWp
+  subsidy_rate_2_to_3kw: 0.20    # 20% subsidy on 2-3 kWp
+  subsidy_max_kw: 3.0             # Subsidy capped at 3 kWp
+  # Financial analysis
+  analysis_period_years: 25       # PV system lifetime
+  discount_rate: 0.08             # 8% — conservative Indian cost of capital
+  electricity_inflation_rate: 0.05 # 5% annual tariff escalation
+  panel_degradation_rate: 0.005  # 0.5% annual PV output degradation
+  maintenance_cost_annual_inr: 2000
+
+# ── File Paths ────────────────────────────────────────────────────────────────
+paths:
+  raw_data: "data/raw/"
+  processed_data: "data/processed/"
+  solar_data: "data/solar/"
+  models: "models/"
+  outputs: "outputs/"
+  logs: "logs/"

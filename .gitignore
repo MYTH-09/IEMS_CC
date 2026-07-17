@@ -1,0 +1,4 @@
+*.csv
+venv/
+**/site-packages/
+**/*.egg-info/
