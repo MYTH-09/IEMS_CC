@@ -192,13 +192,41 @@ def fetch_solar_data(
 
 
 def load_cached(location_name: str, cache_dir: str = "data/solar") -> pd.DataFrame:
-    """Load all cached parquet files for a location and combine them."""
+    """
+    Load all cached RAW WEATHER parquet files for a location and combine them.
+
+    ⚠ Pattern is deliberately strict: matches ONLY '{location_name}_YYYY.parquet'
+    (a 4-digit year), NOT other files that happen to share the location_name
+    prefix — e.g. 'Mathura_solar_15min.parquet' (the PROCESSED pvlib output
+    saved by scripts/02_solar_pipeline.py lives in the same data/solar/
+    directory and would otherwise match a permissive glob, silently mixing
+    raw hourly weather with already-simulated 15-min PV output — different
+    resolutions, overlapping date ranges, duplicate timestamps, and a hard
+    crash downstream in pv_model's resample step. This bit us once — the
+    strict pattern is the actual fix.
+    """
     import glob
-    files = sorted(glob.glob(os.path.join(cache_dir, f"{location_name}_*.parquet")))
+    import re
+
+    all_matches = glob.glob(os.path.join(cache_dir, f"{location_name}_*.parquet"))
+    year_pattern = re.compile(rf"^{re.escape(location_name)}_\d{{4}}\.parquet$")
+    files = sorted(f for f in all_matches if year_pattern.match(os.path.basename(f)))
+
     if not files:
         raise FileNotFoundError(
-            f"No cached solar data for '{location_name}' in '{cache_dir}'. "
+            f"No cached raw-weather solar data for '{location_name}' in '{cache_dir}'. "
             "Run fetch_solar_data() first."
         )
+
     df = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
+
+    # Defensive: even with the strict glob, de-duplicate any repeated
+    # timestamps (e.g. from re-running the pipeline with overlapping
+    # date ranges) rather than let a duplicate silently propagate into
+    # a hard crash several layers downstream.
+    before = len(df)
+    df = df.drop_duplicates(subset="timestamp", keep="last")
+    if len(df) < before:
+        logger.warning(f"load_cached({location_name}): dropped {before - len(df)} duplicate timestamp rows")
+
     return df.sort_values("timestamp").reset_index(drop=True)

@@ -219,6 +219,14 @@ def _resample_to_15min(df_hourly: pd.DataFrame) -> pd.DataFrame:
                           hourly averages).
     Temperature         : linear interpolation (smooth variation expected).
     """
+    # Defensive: guard against duplicate timestamps reaching this point
+    # from any upstream source (this is a second safety net — the primary
+    # fix is in nasa_power.load_cached()'s stricter file-matching pattern).
+    if df_hourly["timestamp"].duplicated().any():
+        n_dupes = df_hourly["timestamp"].duplicated().sum()
+        logger.warning(f"_resample_to_15min: dropping {n_dupes} duplicate timestamp rows before resampling")
+        df_hourly = df_hourly.drop_duplicates(subset="timestamp", keep="last")
+
     df = df_hourly.set_index("timestamp")
 
     # Create a 15-min target index spanning the same period

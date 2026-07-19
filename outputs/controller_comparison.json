@@ -1,0 +1,51 @@
+{
+  "household_spec": {
+    "n_days": 60,
+    "seed": 999,
+    "load_scale": 1.2
+  },
+  "battery_spec": {
+    "capacity_kwh": 10.0,
+    "max_rate_kw": 3.0,
+    "rte": 0.9
+  },
+  "solar_spec": {
+    "peak_kw": 3.0
+  },
+  "episode_days": 30,
+  "results": [
+    {
+      "controller": "rule_based",
+      "total_reward_inr": 20.35,
+      "total_cost_inr": -20.35,
+      "grid_import_kwh": 11.56,
+      "grid_export_kwh": 43.3,
+      "unmet_load_kwh": 3.28,
+      "final_battery_soc": 0.1534,
+      "battery_cycles": 12.751,
+      "runtime_sec": 0.26
+    },
+    {
+      "controller": "dqn",
+      "total_reward_inr": 25.03,
+      "total_cost_inr": -25.03,
+      "grid_import_kwh": 68.82,
+      "grid_export_kwh": 119.2,
+      "unmet_load_kwh": 2.83,
+      "final_battery_soc": 0.147,
+      "battery_cycles": 9.756,
+      "runtime_sec": 0.9
+    },
+    {
+      "controller": "mpc",
+      "total_reward_inr": 78.13,
+      "total_cost_inr": -78.13,
+      "grid_import_kwh": 18.48,
+      "grid_export_kwh": 57.25,
+      "unmet_load_kwh": 0.2,
+      "final_battery_soc": 0.1534,
+      "battery_cycles": 12.785,
+      "runtime_sec": 26.25
+    }
+  ]
+}
