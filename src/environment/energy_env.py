@@ -113,32 +113,72 @@ class EnergyEnv(gym.Env):
         episode_days: int = DEFAULT_EPISODE_DAYS,
         dt_hours: float = DEFAULT_DT_HOURS,
         seed: Optional[int] = None,
+        obs_power_norm_kw: float = 15.0,
+        additional_households: Optional[list[dict]] = None,
     ):
+        """
+        Parameters
+        ----------
+        load_kw, solar_kw, timestamps : The primary (or only) household's data.
+        obs_power_norm_kw : float
+            FIXED normalization constant (kW) used to scale solar_kw/load_kw
+            into the [0,1] observation range.
+
+            ⚠ This must NOT be computed from the household's own data (e.g.
+            `max(load_kw)`). Doing so means the same physical power value
+            (say, 2.1 kW) maps to a different observation number depending
+            on which household's data happened to set the scale — a DQN
+            trained on one household's normalization and evaluated on
+            another's will see a distorted, effectively meaningless input
+            space. Using one fixed constant across every household (train
+            and eval alike) is what makes a trained policy portable.
+            Default 15.0 kW comfortably covers realistic Indian residential
+            loads and panel sizes up to ~10kWp with headroom.
+        additional_households : Optional[list[dict]]
+            Extra households the environment can rotate through, each a
+            dict with keys 'load_kw', 'solar_kw', 'timestamps' (same shape
+            requirements as the primary household). When provided,
+            `reset()` picks a NEW RANDOM HOUSEHOLD from the full pool
+            (primary + additional) at the start of every episode, not just
+            a new start index within one fixed series. This is what
+            forces a DQN to learn a transferable charge/discharge
+            strategy instead of memorizing one household's specific
+            rhythm. Leave as None for single-household use (sizing,
+            rule-based evaluation, or single-household DQN sanity checks).
+        """
         super().__init__()
 
-        assert len(load_kw) == len(solar_kw) == len(timestamps), \
-            "load_kw, solar_kw, and timestamps must be the same length"
-
-        self.load_kw    = np.asarray(load_kw, dtype=np.float32)
-        self.solar_kw   = np.asarray(solar_kw, dtype=np.float32)
-        self.timestamps = pd.DatetimeIndex(timestamps)
-        self.dt_hours   = dt_hours
+        # ── Build the household pool (primary + any additional) ────────────
+        primary = {"load_kw": np.asarray(load_kw, dtype=np.float32),
+                   "solar_kw": np.asarray(solar_kw, dtype=np.float32),
+                   "timestamps": pd.DatetimeIndex(timestamps)}
+        self._household_pool: list[dict] = [primary] + list(additional_households or [])
 
         self.episode_steps = int(episode_days * SLOTS_PER_DAY)
-        assert len(self.load_kw) > self.episode_steps, (
-            f"Data series ({len(self.load_kw)} steps) must be longer than "
-            f"one episode ({self.episode_steps} steps) to allow random start sampling."
-        )
+        for i, h in enumerate(self._household_pool):
+            assert len(h["load_kw"]) == len(h["solar_kw"]) == len(h["timestamps"]), \
+                f"Household {i}: load_kw, solar_kw, and timestamps must be the same length"
+            assert len(h["load_kw"]) > self.episode_steps, (
+                f"Household {i} data series ({len(h['load_kw'])} steps) must be longer "
+                f"than one episode ({self.episode_steps} steps) to allow random start sampling."
+            )
+
+        # Active household's data (selected fresh on each reset()) —
+        # initialized here to the primary household so the env is usable
+        # even before the first reset() call.
+        self.load_kw    = primary["load_kw"]
+        self.solar_kw   = primary["solar_kw"]
+        self.timestamps = primary["timestamps"]
+        self.dt_hours   = dt_hours
 
         self.battery_config = battery_config or {}
         self.battery = BatteryModel(**self.battery_config)
         self.grid    = grid or GridModel()
 
-        # Precompute normalization constants
-        self._max_power_kw = max(
-            float(self.load_kw.max()), float(self.solar_kw.max()), 1.0
-        ) * 1.5   # headroom above observed max
-        # Normalize cumulative units against a generous monthly cap (for observation scaling only)
+        # Fixed normalization constant — see docstring above. NOT derived
+        # from any household's data, so it stays identical across every
+        # household the environment ever loads.
+        self._max_power_kw = obs_power_norm_kw
         self._cum_units_norm_cap = 1000.0
 
         self._rng = np.random.default_rng(seed)
@@ -174,7 +214,20 @@ class EnergyEnv(gym.Env):
         if seed is not None:
             self._rng = np.random.default_rng(seed)
 
-        # Sample a random valid start index for this episode
+        # ── Select a household for this episode ─────────────────────────────
+        # When only one household was provided at construction, this always
+        # selects it (pool of length 1) — identical behavior to before.
+        # When additional_households were provided, a fresh household is
+        # sampled every episode, which is what forces a DQN trained across
+        # many resets to learn transferable behavior instead of memorizing
+        # one household's specific load/solar rhythm.
+        household_idx = int(self._rng.integers(0, len(self._household_pool)))
+        household = self._household_pool[household_idx]
+        self.load_kw    = household["load_kw"]
+        self.solar_kw   = household["solar_kw"]
+        self.timestamps = household["timestamps"]
+
+        # Sample a random valid start index within the selected household's series
         max_start = len(self.load_kw) - self.episode_steps - 1
         self._start_idx = int(self._rng.integers(0, max_start + 1))
         self._step_idx  = 0
@@ -190,6 +243,7 @@ class EnergyEnv(gym.Env):
 
         obs = self._get_observation()
         info = self._get_info()
+        info["household_idx"] = household_idx
         return obs, info
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict]:
@@ -364,7 +418,8 @@ class EnergyEnv(gym.Env):
     def __repr__(self) -> str:
         return (
             f"EnergyEnv(episode_steps={self.episode_steps}, "
-            f"data_len={len(self.load_kw)}, "
+            f"households_in_pool={len(self._household_pool)}, "
+            f"active_data_len={len(self.load_kw)}, "
             f"battery={self.battery.capacity_kwh}kWh, "
             f"grid={self.grid})"
         )
