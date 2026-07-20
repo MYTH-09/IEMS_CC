@@ -1,0 +1,24 @@
+{
+  "recommended_candidate": "best_npv",
+  "recommended_by_controller": "mpc",
+  "confidence": "high",
+  "verdict": "stable",
+  "all_controller_rankings": {
+    "dqn": [
+      "best_npv",
+      "best_backup",
+      "most_balanced"
+    ],
+    "mpc": [
+      "best_npv",
+      "best_backup",
+      "most_balanced"
+    ],
+    "rule_based": [
+      "best_npv",
+      "best_backup",
+      "most_balanced"
+    ]
+  },
+  "disagreement_details": []
+}
