@@ -27,6 +27,8 @@ best outage backup), since "optimal" depends on what the customer values.
 
 from __future__ import annotations
 
+import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, asdict
 from typing import Optional
 
@@ -133,6 +135,62 @@ def simulate_system_size(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Multiprocessing worker
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _score_one_combo(
+    panel_kw: float,
+    battery_kwh: float,
+    load_kw: np.ndarray,
+    solar_kw_per_kwp: np.ndarray,
+    timestamps: pd.DatetimeIndex,
+    grid: GridModel,
+    baseline_annual_cost_inr: float,
+    financial_config: dict,
+    seed: int,
+) -> dict:
+    """
+    Score exactly one (panel_kw, battery_kwh) combination end-to-end —
+    simulation + financials. Kept as a plain MODULE-LEVEL function (not a
+    closure/nested function) specifically so it can be pickled and
+    dispatched to worker processes by ProcessPoolExecutor — the same
+    constraint that shaped nsga2_sizing.py's picklable-class requirement
+    for solar curve functions. All arguments here are plain data (numpy
+    arrays, a DatetimeIndex, a GridModel, dicts, floats), which pickle
+    fine on their own; only the *function itself* needed to not be a
+    closure.
+    """
+    result = simulate_system_size(
+        load_kw, solar_kw_per_kwp, timestamps,
+        panel_kw=panel_kw, battery_kwh=battery_kwh, grid=grid,
+        episode_days=365, seed=seed,
+    )
+
+    annual_savings_inr = baseline_annual_cost_inr - result["annual_cost_inr"]
+
+    financials = full_financial_analysis(
+        panel_kw=panel_kw, battery_kwh=battery_kwh,
+        year1_savings_inr=max(annual_savings_inr, 0.0),
+        config=financial_config,
+    )
+
+    return {
+        "panel_kw": panel_kw,
+        "battery_kwh": battery_kwh,
+        "annual_grid_import_kwh": result["annual_grid_import_kwh"],
+        "annual_grid_export_kwh": result["annual_grid_export_kwh"],
+        "annual_unmet_load_kwh": result["annual_unmet_load_kwh"],
+        "outage_steps_covered": result["outage_steps_covered"],
+        "annual_savings_inr": round(annual_savings_inr, 2),
+        "total_capex_inr": financials.total_capex_inr,
+        "subsidy_amount_inr": financials.subsidy_amount_inr,
+        "payback_years": financials.payback_years,
+        "npv_25yr_inr": financials.npv_25yr_inr,
+        "irr_pct": financials.irr_pct,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Full sweep
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -145,6 +203,7 @@ def run_grid_search(
     battery_sizes_kwh: list[float],
     financial_config: dict,
     seed: int = 42,
+    n_workers: Optional[int] = None,
 ) -> pd.DataFrame:
     """
     Sweep all (panel_kw, battery_kwh) combinations and return a scored
@@ -158,6 +217,14 @@ def run_grid_search(
     financial_config : dict
         The `sizing:` section of `default_config.yaml` (cost/subsidy/
         discount-rate parameters, forwarded to `full_financial_analysis`).
+    n_workers : Optional[int]
+        Number of worker PROCESSES to score combinations in parallel.
+        - None (default): auto-detect via os.cpu_count(), capped at 8.
+        - 1: disables parallelization — runs serially (easier debugging).
+        - N: use exactly N worker processes.
+        Each combination's year-long simulation is fully independent of
+        every other's, so this gives close to linear speedup — the same
+        pattern already used for NSGA-II (src/sizing/nsga2_sizing.py).
 
     Returns
     -------
@@ -166,10 +233,15 @@ def run_grid_search(
         annual_unmet_load_kwh, outage_steps_covered, annual_savings_inr,
         total_capex_inr, payback_years, npv_25yr_inr, irr_pct
     """
+    if n_workers is None:
+        n_workers = min(os.cpu_count() or 1, 8)
+
+    combos = [(p, b) for p in panel_sizes_kw for b in battery_sizes_kwh]
+    total = len(combos)
     logger.info(
         f"Running grid search: {len(panel_sizes_kw)} panel sizes × "
-        f"{len(battery_sizes_kwh)} battery sizes = "
-        f"{len(panel_sizes_kw) * len(battery_sizes_kwh)} combinations"
+        f"{len(battery_sizes_kwh)} battery sizes = {total} combinations, "
+        f"n_workers={n_workers}"
     )
 
     # ── Step 1: compute the no-solar, no-battery baseline once ────────────
@@ -188,47 +260,47 @@ def run_grid_search(
 
     # ── Step 2: sweep all combinations ──────────────────────────────────────
     rows = []
-    total = len(panel_sizes_kw) * len(battery_sizes_kwh)
     count = 0
 
-    for panel_kw in panel_sizes_kw:
-        for battery_kwh in battery_sizes_kwh:
-            count += 1
-            result = simulate_system_size(
-                load_kw, solar_kw_per_kwp, timestamps,
-                panel_kw=panel_kw, battery_kwh=battery_kwh, grid=grid,
-                episode_days=365, seed=seed,
-            )
-
-            annual_savings_inr = baseline_annual_cost_inr - result["annual_cost_inr"]
-
-            financials = full_financial_analysis(
-                panel_kw=panel_kw, battery_kwh=battery_kwh,
-                year1_savings_inr=max(annual_savings_inr, 0.0),
-                config=financial_config,
-            )
-
-            row = {
-                "panel_kw": panel_kw,
-                "battery_kwh": battery_kwh,
-                "annual_grid_import_kwh": result["annual_grid_import_kwh"],
-                "annual_grid_export_kwh": result["annual_grid_export_kwh"],
-                "annual_unmet_load_kwh": result["annual_unmet_load_kwh"],
-                "outage_steps_covered": result["outage_steps_covered"],
-                "annual_savings_inr": round(annual_savings_inr, 2),
-                "total_capex_inr": financials.total_capex_inr,
-                "subsidy_amount_inr": financials.subsidy_amount_inr,
-                "payback_years": financials.payback_years,
-                "npv_25yr_inr": financials.npv_25yr_inr,
-                "irr_pct": financials.irr_pct,
+    if n_workers > 1:
+        # ProcessPoolExecutor's default start method pickles the target
+        # function + its arguments for dispatch to each worker — this is
+        # why _score_one_combo is a module-level function, not a closure
+        # (closures can't be pickled; see nsga2_sizing.py for the same
+        # lesson learned the hard way there).
+        with ProcessPoolExecutor(max_workers=n_workers) as executor:
+            futures = {
+                executor.submit(
+                    _score_one_combo, panel_kw, battery_kwh,
+                    load_kw, solar_kw_per_kwp, timestamps, grid,
+                    baseline_annual_cost_inr, financial_config, seed,
+                ): (panel_kw, battery_kwh)
+                for panel_kw, battery_kwh in combos
             }
+            for future in as_completed(futures):
+                panel_kw, battery_kwh = futures[future]
+                row = future.result()
+                rows.append(row)
+                count += 1
+                logger.debug(
+                    f"  [{count}/{total}] {panel_kw}kW + {battery_kwh}kWh → "
+                    f"savings=₹{row['annual_savings_inr']:,.0f}/yr, "
+                    f"payback={row['payback_years']:.1f}yr, "
+                    f"NPV25=₹{row['npv_25yr_inr']:,.0f}"
+                )
+    else:
+        for panel_kw, battery_kwh in combos:
+            count += 1
+            row = _score_one_combo(
+                panel_kw, battery_kwh, load_kw, solar_kw_per_kwp, timestamps,
+                grid, baseline_annual_cost_inr, financial_config, seed,
+            )
             rows.append(row)
-
             logger.debug(
                 f"  [{count}/{total}] {panel_kw}kW + {battery_kwh}kWh → "
-                f"savings=₹{annual_savings_inr:,.0f}/yr, "
-                f"payback={financials.payback_years:.1f}yr, "
-                f"NPV25=₹{financials.npv_25yr_inr:,.0f}"
+                f"savings=₹{row['annual_savings_inr']:,.0f}/yr, "
+                f"payback={row['payback_years']:.1f}yr, "
+                f"NPV25=₹{row['npv_25yr_inr']:,.0f}"
             )
 
     df = pd.DataFrame(rows).sort_values("npv_25yr_inr", ascending=False).reset_index(drop=True)

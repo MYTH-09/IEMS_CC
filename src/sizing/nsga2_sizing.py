@@ -296,17 +296,39 @@ def run_nsga2(
 
     logger.success(f"NSGA-II complete: {len(result.X)} non-dominated solutions found")
 
+    # The optimizer's own per-generation evaluations compute annual_savings_inr
+    # internally (inside SizingProblem._evaluate, to build financials) but
+    # never persist it to the output — only the 4 pymoo objectives survive
+    # into result.F. Rather than have every downstream caller guess or
+    # approximate this from NPV (e.g. app.py previously used a crude
+    # `npv/15` placeholder), re-simulate just the small set of FINAL front
+    # points once each — cheap, since the front is typically ≤pop_size
+    # points, not the thousands evaluated during the search itself.
+    logger.info(f"Computing annual_savings_inr for {len(result.X)} front points...")
+    solar_cache: dict[tuple, np.ndarray] = {}
     rows = []
     for x, f in zip(result.X, result.F):
+        panel_kw, battery_kwh, tilt_deg, azimuth_deg = x
+        key = (round(tilt_deg, 1), round(azimuth_deg, 1))
+        if key not in solar_cache:
+            solar_cache[key] = solar_curve_fn(*key)
+        sim_result = simulate_system_size(
+            load_kw=load_kw, solar_kw_per_kwp=solar_cache[key], timestamps=timestamps,
+            panel_kw=panel_kw, battery_kwh=battery_kwh, grid=grid,
+            episode_days=episode_days, seed=seed,
+        )
+        annual_savings_inr = baseline_annual_cost_inr - sim_result["annual_cost_inr"]
+
         rows.append({
-            "panel_kw": round(x[0], 2),
-            "battery_kwh": round(x[1], 2),
-            "tilt_deg": round(x[2], 1),
-            "azimuth_deg": round(x[3], 1),
+            "panel_kw": round(panel_kw, 2),
+            "battery_kwh": round(battery_kwh, 2),
+            "tilt_deg": round(tilt_deg, 1),
+            "azimuth_deg": round(azimuth_deg, 1),
             "total_capex_inr": round(f[0], 2),
             "npv_25yr_inr": round(-f[1], 2),
             "payback_years": round(f[2], 2),
             "annual_unmet_load_kwh": round(f[3], 2),
+            "annual_savings_inr": round(annual_savings_inr, 2),
         })
 
     df = pd.DataFrame(rows).sort_values("npv_25yr_inr", ascending=False).reset_index(drop=True)

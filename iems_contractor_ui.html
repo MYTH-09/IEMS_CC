@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IEMS — Contractor sizing tool</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap"
+        rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --paper: #F7F8F6;
+            --panel: #FFFFFF;
+            --ink: #12203A;
+            --ink-soft: #55606E;
+            --ink-faint: #8B92A0;
+            --gold: #E5A032;
+            --gold-deep: #935F14;
+            --gold-tint: #FBEEDA;
+            --teal: #2F6E73;
+            --teal-deep: #1B4448;
+            --teal-tint: #E1EEEE;
+            --rust: #B5533C;
+            --rust-deep: #7A3626;
+            --rust-tint: #F7E7E1;
+            --line: #E1DFD6;
+            --radius: 10px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: var(--paper);
+            color: var(--ink);
+            font-family: 'Inter', -apple-system, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .font-mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .shell {
+            max-width: 820px;
+            margin: 0 auto;
+            padding: 48px 24px 96px;
+        }
+
+        .brand-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 36px;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .brand-mark {
+            width: 26px;
+            height: 26px;
+            border-radius: 6px;
+            background: var(--ink);
+            position: relative;
+            flex: none;
+        }
+
+        .brand-mark::after {
+            content: '';
+            position: absolute;
+            top: 6px;
+            left: 6px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid var(--gold);
+        }
+
+        .brand-name {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 16px;
+        }
+
+        .brand-tag {
+            font-size: 12px;
+            color: var(--ink-faint);
+            margin-left: 8px;
+            padding-left: 8px;
+            border-left: 1px solid var(--line);
+        }
+
+        .view-toggle {
+            display: flex;
+            gap: 4px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 3px;
+        }
+
+        .view-toggle button {
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            font-weight: 500;
+            padding: 7px 14px;
+            border: none;
+            background: transparent;
+            color: var(--ink-soft);
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .view-toggle button.active {
+            background: var(--ink);
+            color: white;
+        }
+
+        .eyebrow {
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--gold-deep);
+            margin: 0 0 10px;
+        }
+
+        .h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 28px;
+            line-height: 1.2;
+            margin: 0 0 10px;
+            letter-spacing: -0.01em;
+        }
+
+        .lede {
+            font-size: 14.5px;
+            color: var(--ink-soft);
+            line-height: 1.6;
+            margin: 0 0 36px;
+            max-width: 520px;
+        }
+
+        .divider {
+            border: none;
+            border-top: 1px solid var(--line);
+            margin: 32px 0;
+        }
+
+        .section-label {
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--ink-faint);
+            margin: 0 0 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* ---------- INPUT VIEW ---------- */
+        .step {
+            margin-bottom: 32px;
+        }
+
+        .step-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .step-num {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--gold-deep);
+            background: var(--gold-tint);
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: none;
+        }
+
+        .step-title {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .step-optional {
+            font-size: 11.5px;
+            color: var(--ink-faint);
+            font-weight: 400;
+            margin-left: 2px;
+        }
+
+        .pill-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .pill-option {
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 14px 16px;
+            cursor: pointer;
+            background: var(--panel);
+        }
+
+        .pill-option.active {
+            border: 1.5px solid var(--gold);
+            background: var(--gold-tint);
+        }
+
+        .pill-option .t {
+            font-size: 13.5px;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .pill-option .d {
+            font-size: 12px;
+            color: var(--ink-soft);
+        }
+
+        .pill-option .meta {
+            font-size: 11px;
+            color: var(--teal-deep);
+            margin-top: 6px;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .field-label {
+            font-size: 12.5px;
+            font-weight: 500;
+            color: var(--ink-soft);
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .amount-input {
+            display: flex;
+            align-items: center;
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            background: var(--panel);
+            overflow: hidden;
+        }
+
+        .amount-input .prefix {
+            padding: 0 14px;
+            color: var(--ink-faint);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 15px;
+            border-right: 1px solid var(--line);
+            align-self: stretch;
+            display: flex;
+            align-items: center;
+        }
+
+        .amount-input input {
+            border: none;
+            outline: none;
+            padding: 13px 14px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 16px;
+            font-weight: 500;
+            flex: 1;
+            width: 100%;
+            color: var(--ink);
+            background: transparent;
+        }
+
+        .amount-input .suffix {
+            padding: 0 14px;
+            color: var(--ink-faint);
+            font-size: 13px;
+        }
+
+        select {
+            width: 100%;
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            background: var(--panel);
+            padding: 12px 14px;
+            font-family: 'Inter', sans-serif;
+            font-size: 14.5px;
+            color: var(--ink);
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2355606E' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 14px center;
+        }
+
+        .toggle-pair {
+            display: flex;
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            overflow: hidden;
+            width: fit-content;
+        }
+
+        .toggle-pair button {
+            font-family: 'Inter', sans-serif;
+            font-size: 13.5px;
+            font-weight: 500;
+            padding: 10px 22px;
+            border: none;
+            background: var(--panel);
+            color: var(--ink-soft);
+            cursor: pointer;
+        }
+
+        .toggle-pair button.active {
+            background: var(--ink);
+            color: white;
+        }
+
+        .toggle-pair button:not(:last-child) {
+            border-right: 1px solid var(--line);
+        }
+
+        .depth-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .depth-card {
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 16px;
+            cursor: pointer;
+            background: var(--panel);
+        }
+
+        .depth-card.active {
+            border: 1.5px solid var(--gold);
+            background: var(--gold-tint);
+        }
+
+        .depth-card .t {
+            font-size: 13.5px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .depth-card .time {
+            font-size: 11px;
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--ink-faint);
+        }
+
+        .depth-card .d {
+            font-size: 12px;
+            color: var(--ink-soft);
+            line-height: 1.5;
+        }
+
+        .cta {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: var(--radius);
+            background: var(--ink);
+            color: white;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+
+        .cta:hover {
+            background: #1C2E4F;
+        }
+
+        /* ---------- REPORT VIEW ---------- */
+        .report-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--teal-deep);
+            background: var(--teal-tint);
+            padding: 5px 11px;
+            border-radius: 20px;
+            margin-bottom: 16px;
+        }
+
+        .search-caption {
+            font-size: 12px;
+            color: var(--ink-faint);
+            margin: -28px 0 28px;
+        }
+
+        .tab-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 28px;
+        }
+
+        .tab-card {
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 14px 16px;
+            cursor: pointer;
+            background: var(--panel);
+        }
+
+        .tab-card.active {
+            border: 1.5px solid var(--gold);
+            background: var(--gold-tint);
+        }
+
+        .tab-card .ot {
+            font-size: 12.5px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .tab-card .ov {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .tab-card .os {
+            font-size: 11.5px;
+            color: var(--ink-soft);
+            margin-top: 2px;
+        }
+
+        .hero-panel {
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 32px;
+            background: var(--panel);
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 32px;
+            align-items: center;
+        }
+
+        .dial-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .dial-caption {
+            font-size: 11.5px;
+            color: var(--ink-soft);
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        .hero-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px 24px;
+        }
+
+        .hero-stat .label {
+            font-size: 12px;
+            color: var(--ink-soft);
+            margin-bottom: 4px;
+        }
+
+        .hero-stat .value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 21px;
+            font-weight: 600;
+        }
+
+        .hero-stat .unit {
+            font-size: 12.5px;
+            font-weight: 500;
+            color: var(--ink-faint);
+            margin-left: 3px;
+        }
+
+        .chart-panel {
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 22px 26px 18px;
+            background: var(--panel);
+        }
+
+        .chart-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+
+        .season-toggle {
+            display: flex;
+            gap: 4px;
+            background: var(--paper);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 3px;
+        }
+
+        .season-toggle button {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            font-weight: 500;
+            padding: 5px 12px;
+            border: none;
+            background: transparent;
+            color: var(--ink-soft);
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .season-toggle button.active {
+            background: var(--ink);
+            color: white;
+        }
+
+        .chart-hint {
+            font-size: 11.5px;
+            color: var(--ink-faint);
+            margin-top: 10px;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+
+        .stat-card {
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 16px;
+            background: var(--panel);
+        }
+
+        .stat-card .label {
+            font-size: 11.5px;
+            color: var(--ink-soft);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 8px;
+        }
+
+        .stat-card .value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 19px;
+            font-weight: 600;
+        }
+
+        .stat-card .value .u {
+            font-size: 12px;
+            color: var(--ink-faint);
+            font-weight: 500;
+            margin-left: 2px;
+        }
+
+        .cost-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--line);
+            font-size: 14px;
+        }
+
+        .cost-row:last-child {
+            border-bottom: none;
+        }
+
+        .cost-row .k {
+            color: var(--ink-soft);
+        }
+
+        .cost-row .v {
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 500;
+        }
+
+        .cost-row.discount .v {
+            color: var(--teal-deep);
+        }
+
+        .cost-row.budget-flag .v {
+            color: var(--rust-deep);
+        }
+
+        .cost-row.total {
+            padding-top: 16px;
+            margin-top: 4px;
+            border-top: 1.5px solid var(--ink);
+        }
+
+        .cost-row.total .k {
+            color: var(--ink);
+            font-weight: 600;
+        }
+
+        .cost-row.total .v {
+            font-size: 17px;
+            font-weight: 600;
+        }
+
+        .outage-panel {
+            border-radius: 14px;
+            padding: 20px 26px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            transition: background .2s, border-color .2s;
+        }
+
+        .outage-figure {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 28px;
+            font-weight: 600;
+            flex: none;
+        }
+
+        .outage-figure .u {
+            font-size: 13px;
+        }
+
+        .outage-text .t {
+            font-size: 13.5px;
+            font-weight: 600;
+            margin-bottom: 3px;
+        }
+
+        .outage-text .d {
+            font-size: 12.5px;
+            line-height: 1.5;
+        }
+
+        .trust-row {
+            display: flex;
+            gap: 26px;
+            padding: 18px 0;
+        }
+
+        .trust-item {
+            flex: 1;
+        }
+
+        .trust-item .tt {
+            font-size: 12.5px;
+            font-weight: 600;
+            margin-bottom: 3px;
+        }
+
+        .trust-item .td {
+            font-size: 11.5px;
+            color: var(--ink-soft);
+            line-height: 1.5;
+        }
+
+        .trust-check {
+            color: var(--teal);
+            font-weight: 600;
+            margin-right: 5px;
+        }
+
+        .actions-row {
+            margin-bottom: 8px;
+        }
+
+        .action-btn {
+            padding: 13px 28px;
+            border: 1px solid var(--ink);
+            border-radius: var(--radius);
+            background: var(--ink);
+            color: white;
+            font-family: 'Inter', sans-serif;
+            font-size: 13.5px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .disclaimer {
+            font-size: 11.5px;
+            color: var(--ink-faint);
+            line-height: 1.6;
+            padding: 18px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+        }
+
+        @media (max-width: 620px) {
+            .hero-panel {
+                grid-template-columns: 1fr;
+            }
+
+            .stat-grid,
+            .tab-row,
+            .depth-row {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="shell">
+
+        <div class="brand-row">
+            <div class="brand">
+                <div class="brand-mark"></div>
+                <div class="brand-name">IEMS</div>
+                <div class="brand-tag">Contractor sizing tool</div>
+            </div>
+            <div class="view-toggle">
+                <button id="btn-input" class="active" onclick="showView('input')">Input</button>
+                <button id="btn-report" onclick="showView('report')">Report</button>
+            </div>
+        </div>
+
+        <!-- ============ INPUT VIEW ============ -->
+        <div id="view-input">
+            <p class="eyebrow">New sizing run</p>
+            <h1 class="h1">Set up this customer</h1>
+            <p class="lede">Every field below feeds the simulation directly — nothing here is a marketing estimate.</p>
+
+            <div class="step">
+                <div class="step-head">
+                    <div class="step-num">1</div>
+                    <div class="step-title">Usage estimate</div>
+                </div>
+                <div class="pill-row">
+                    <div class="pill-option active" onclick="selectPill(this)">
+                        <div class="t">Monthly bill</div>
+                        <div class="d">Enter the customer's electricity bill</div>
+                    </div>
+                    <div class="pill-option" onclick="selectPill(this)">
+                        <div class="t">Monthly units</div>
+                        <div class="d">Enter consumption in kWh directly</div>
+                    </div>
+                </div>
+                <span class="field-label">Monthly electricity bill</span>
+                <div class="amount-input">
+                    <div class="prefix">₹</div><input type="text" value="2,400" inputmode="numeric">
+                    <div class="suffix">/ month</div>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-head">
+                    <div class="step-num">2</div>
+                    <div class="step-title">Location</div>
+                </div>
+                <span class="field-label">City</span>
+                <select>
+                    <option>Mathura, Uttar Pradesh</option>
+                    <option>Bareilly, Uttar Pradesh</option>
+                </select>
+            </div>
+
+            <div class="step">
+                <div class="step-head">
+                    <div class="step-num">3</div>
+                    <div class="step-title">Budget cap</div><span class="step-optional">optional</span>
+                </div>
+                <span class="field-label">Maximum system cost the customer will consider</span>
+                <div class="amount-input">
+                    <div class="prefix">₹</div><input type="text" placeholder="No cap — search full range"
+                        inputmode="numeric">
+                    <div class="suffix">max</div>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-head">
+                    <div class="step-num">4</div>
+                    <div class="step-title">Subsidy eligibility</div>
+                </div>
+                <span class="field-label">Does this customer qualify for PM Surya Ghar (residential DCR)?</span>
+                <div class="toggle-pair">
+                    <button class="active" onclick="selectToggle(this)">Yes</button>
+                    <button onclick="selectToggle(this)">No</button>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-head">
+                    <div class="step-num">5</div>
+                    <div class="step-title">Sizing depth</div>
+                </div>
+                <div class="depth-row">
+                    <div class="depth-card active" onclick="selectDepth(this)">
+                        <div class="t">Quick<span class="time">~5 min</span></div>
+                        <div class="d">48 commercial panel/battery sizes, ranked three ways.</div>
+                    </div>
+                    <div class="depth-card" onclick="selectDepth(this)">
+                        <div class="t">Thorough<span class="time">20–120 min</span></div>
+                        <div class="d">Continuous search incl. tilt/azimuth — full trade-off front.</div>
+                    </div>
+                </div>
+            </div>
+
+            <button class="cta" id="cta-btn" onclick="runSizing()">Run sizing simulation →</button>
+            <p id="cta-status" style="font-size:12px;color:var(--ink-soft);margin-top:10px;text-align:center;"></p>
+        </div>
+
+        <!-- ============ REPORT VIEW ============ -->
+        <div id="view-report" style="display:none">
+
+            <div class="report-badge">Mathura, Uttar Pradesh</div>
+            <h1 class="h1">Sizing report</h1>
+            <p class="lede">Three systems, each the best possible choice for a different priority. No single "optimal"
+                answer is forced — pick the tab that matches this customer.</p>
+            <p class="search-caption" id="search-caption">Based on a quick search — 48 configurations simulated across a
+                full year.</p>
+
+            <div class="tab-row">
+                <div class="tab-card" onclick="selectTab(this, 'payback')" data-tab="payback">
+                    <div class="ot">Fastest payback</div>
+                    <div class="ov">5.2 yrs</div>
+                    <div class="os">Smallest upfront cost</div>
+                </div>
+                <div class="tab-card active" onclick="selectTab(this, 'npv')" data-tab="npv">
+                    <div class="ot">Best 25-year return</div>
+                    <div class="ov">₹18.6L</div>
+                    <div class="os">Highest lifetime savings</div>
+                </div>
+                <div class="tab-card" onclick="selectTab(this, 'backup')" data-tab="backup">
+                    <div class="ot">Best outage protection</div>
+                    <div class="ov">100%</div>
+                    <div class="os">Near-zero power loss</div>
+                </div>
+            </div>
+
+            <div class="hero-panel">
+                <div class="dial-wrap">
+                    <svg width="170" height="115" viewBox="0 0 180 120">
+                        <path d="M 15 105 A 75 75 0 0 1 165 105" fill="none" stroke="#E1DFD6" stroke-width="10"
+                            stroke-linecap="round" />
+                        <path id="dial-arc" d="M 15 105 A 75 75 0 0 1 140 45" fill="none" stroke="#E5A032"
+                            stroke-width="10" stroke-linecap="round" />
+                        <circle id="dial-dot" cx="140" cy="45" r="6" fill="#12203A" />
+                        <text id="dial-value" x="90" y="88" text-anchor="middle" font-family="IBM Plex Mono, monospace"
+                            font-size="26" font-weight="600" fill="#12203A">10.0</text>
+                        <text x="90" y="104" text-anchor="middle" font-family="Inter, sans-serif" font-size="11"
+                            fill="#55606E">kWp panels</text>
+                    </svg>
+                    <div class="dial-caption" id="dial-caption">Tilt 25°, facing 157°</div>
+                </div>
+                <div class="hero-stats">
+                    <div class="hero-stat">
+                        <div class="label">Battery storage</div>
+                        <div class="value font-mono" id="stat-battery">6.7<span class="unit">kWh</span></div>
+                    </div>
+                    <div class="hero-stat">
+                        <div class="label">System cost</div>
+                        <div class="value font-mono" id="stat-capex">5.15<span class="unit">L</span></div>
+                    </div>
+                    <div class="hero-stat">
+                        <div class="label">Payback period</div>
+                        <div class="value font-mono" id="stat-payback">8.0<span class="unit">yrs</span></div>
+                    </div>
+                    <div class="hero-stat">
+                        <div class="label">25-year return</div>
+                        <div class="value font-mono" id="stat-irr">14.3<span class="unit">%</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <p class="section-label">
+                <span>Simulated day — generation, load and battery state</span>
+            </p>
+            <div class="chart-panel">
+                <div class="chart-top">
+                    <div style="font-size:12px;color:var(--ink-soft)">Representative day, selected system</div>
+                    <div class="season-toggle">
+                        <button class="active" onclick="selectSeason(this,'summer')">Summer</button>
+                        <button onclick="selectSeason(this,'monsoon')">Monsoon</button>
+                        <button onclick="selectSeason(this,'winter')">Winter</button>
+                    </div>
+                </div>
+                <canvas id="dayChart" height="230"></canvas>
+                <div class="chart-hint">Hover for exact values · click a legend item to isolate a series · shaded band
+                    marks the evening outage window for this candidate</div>
+            </div>
+
+            <hr class="divider">
+
+            <p class="section-label">What the customer saves</p>
+            <div class="stat-grid">
+                <div class="stat-card">
+                    <div class="label">Monthly</div>
+                    <div class="value" id="save-monthly">₹4,860</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Annual</div>
+                    <div class="value" id="save-annual">₹58,320</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Over 25 years</div>
+                    <div class="value" id="save-lifetime">₹18.6<span class="u">L</span></div>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <p class="section-label">Cost and subsidy</p>
+            <div>
+                <div class="cost-row">
+                    <div class="k">System cost (panels + battery)</div>
+                    <div class="v" id="cost-gross">₹4,15,000</div>
+                </div>
+                <div class="cost-row discount">
+                    <div class="k">PM Surya Ghar subsidy</div>
+                    <div class="v" id="cost-subsidy">−₹78,000</div>
+                </div>
+                <div class="cost-row total">
+                    <div class="k">Net investment</div>
+                    <div class="v" id="cost-net">₹3,37,000</div>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <p class="section-label">Outage protection for this system</p>
+            <div class="outage-panel" id="outage-panel">
+                <div class="outage-figure" id="outage-figure">99.8<span class="u">%</span></div>
+                <div class="outage-text">
+                    <div class="t" id="outage-title">Covered through nearly every outage</div>
+                    <div class="d" id="outage-desc">Mathura sees roughly 4 hours of grid interruption a day. This
+                        configuration meets the customer's essential load through 99.8% of that time.</div>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <p class="section-label" id="trust-label">Checked three ways</p>
+            <div class="trust-row">
+                <div class="trust-item" id="trust-rule_based">
+                    <div class="tt"><span class="trust-check">✓</span>Rule-based control</div>
+                    <div class="td">Fixed charging priority — the search baseline.</div>
+                </div>
+                <div class="trust-item" id="trust-mpc">
+                    <div class="tt"><span class="trust-check">✓</span>Predictive optimization</div>
+                    <div class="td">Plans 24h ahead, re-solved every 15 min.</div>
+                </div>
+                <div class="trust-item" id="trust-dqn">
+                    <div class="tt"><span class="trust-check">✓</span>Learned control</div>
+                    <div class="td">Trained on real household patterns.</div>
+                </div>
+            </div>
+            <p id="trust-verdict-text" style="font-size:12px;color:var(--ink-soft);margin-top:-6px;">All three
+                independently agree on this ranking — high confidence.</p>
+
+            <hr class="divider">
+
+            <div class="actions-row"><button class="action-btn">Download PDF</button></div>
+
+            <div class="disclaimer">
+                Generation and savings are simulated using satellite irradiance data for Mathura, this area's recorded
+                grid outage history, and Uttar Pradesh's actual DVVNL slab tariffs. PM Surya Ghar subsidy figures follow
+                current scheme guidelines and are subject to change. Final numbers depend on roof survey, shading, and
+                equipment selection.
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        const candidates = {
+            payback: { panel: 2.6, battery: 0.1, capex: 86825, subsidy: 39070, net: 47755, npv: 163504, npv_label: '1.6L', payback: 5.2, irr: 20.2, monthly: 2735, annual: 32820, lifetime: '6.1L', tiltDeg: 26, azimuth: 157, arcEnd: 100, backupPct: 34.2, outageDesc: 'A small battery means most evening outages still draw on the grid or go unmet.' },
+            npv: { panel: 10.0, battery: 6.7, capex: 515420, subsidy: 78000, net: 337000, npv: 369511, npv_label: '18.6L', payback: 8.0, irr: 14.3, monthly: 4860, annual: 58320, lifetime: '18.6L', tiltDeg: 25, azimuth: 157, arcEnd: 140, backupPct: 99.8, outageDesc: 'Mathura sees roughly 4 hours of grid interruption a day. This configuration meets essential load through 99.8% of that time.' },
+            backup: { panel: 10.0, battery: 11.1, capex: 581151, subsidy: 78000, net: 397151, npv: 315368, npv_label: '15.8L', payback: 8.7, irr: 13.1, monthly: 4620, annual: 55440, lifetime: '15.8L', tiltDeg: 26, azimuth: 157, arcEnd: 145, backupPct: 100, outageDesc: 'The largest battery in this set. Covers essentially every recorded outage window for this location.' }
+        };
+
+        function fmtINR(n) { return '₹' + Math.round(n).toLocaleString('en-IN'); }
+
+        function renderCandidate(key) {
+            const c = candidates[key];
+            document.getElementById('stat-battery').innerHTML = c.battery.toFixed(1) + '<span class="unit">kWh</span>';
+            document.getElementById('stat-capex').innerHTML = (c.capex / 100000).toFixed(2) + '<span class="unit">L</span>';
+            document.getElementById('stat-payback').innerHTML = c.payback.toFixed(1) + '<span class="unit">yrs</span>';
+            document.getElementById('stat-irr').innerHTML = c.irr.toFixed(1) + '<span class="unit">%</span>';
+            document.getElementById('dial-value').textContent = c.panel.toFixed(1);
+            document.getElementById('dial-caption').textContent = 'Tilt ' + c.tiltDeg + '°, facing ' + c.azimuth + '°';
+            const arcX = 15 + (c.arcEnd / 165) * 125, arcY = Math.max(30, 105 - (c.arcEnd / 165) * 90);
+            document.getElementById('save-monthly').textContent = fmtINR(c.monthly);
+            document.getElementById('save-annual').textContent = fmtINR(c.annual);
+            document.getElementById('save-lifetime').innerHTML = '₹' + c.lifetime.replace('L', '') + '<span class="u">L</span>';
+            document.getElementById('cost-gross').textContent = fmtINR(c.capex);
+            document.getElementById('cost-subsidy').textContent = '−' + fmtINR(c.subsidy);
+            document.getElementById('cost-net').textContent = fmtINR(c.net);
+            document.getElementById('outage-figure').innerHTML = c.backupPct.toFixed(1) + '<span class="u">%</span>';
+            document.getElementById('outage-desc').textContent = c.outageDesc;
+            const panel = document.getElementById('outage-panel');
+            const good = c.backupPct >= 90;
+            panel.style.background = good ? 'var(--teal-tint)' : 'var(--rust-tint)';
+            panel.style.border = '1px solid ' + (good ? 'var(--teal-tint)' : 'var(--rust-tint)');
+            document.getElementById('outage-figure').style.color = good ? 'var(--teal-deep)' : 'var(--rust-deep)';
+            document.getElementById('outage-title').style.color = good ? 'var(--teal-deep)' : 'var(--rust-deep)';
+            document.getElementById('outage-title').textContent = good ? 'Covered through nearly every outage' : 'Partial coverage during outages';
+            document.getElementById('outage-desc').style.color = good ? '#2A5A5E' : '#8C4834';
+            if (window.dayChart) updateOutageBand(key);
+        }
+
+        function selectTab(el, key) {
+            document.querySelectorAll('.tab-card').forEach(t => t.classList.remove('active'));
+            el.classList.add('active');
+            renderCandidate(key);
+        }
+
+        const seasonData = {
+            summer: { solar: [0, 0, 0, 0, 0, 0.3, 1.2, 2.8, 4.5, 6.0, 6.8, 7.0, 6.8, 6.2, 5.0, 3.5, 1.8, 0.5, 0, 0, 0, 0, 0, 0], load: [0.4, 0.3, 0.3, 0.3, 0.4, 0.6, 1.0, 1.3, 1.0, 0.7, 0.6, 0.6, 0.7, 0.7, 0.8, 0.9, 1.1, 1.6, 2.1, 2.4, 2.0, 1.4, 0.8, 0.5], soc: [42, 38, 35, 33, 32, 34, 40, 48, 58, 70, 82, 90, 95, 95, 92, 86, 76, 64, 54, 46, 44, 45, 44, 43] },
+            monsoon: { solar: [0, 0, 0, 0, 0, 0.2, 0.8, 1.6, 2.4, 3.0, 3.4, 3.8, 3.5, 3.0, 2.2, 1.3, 0.5, 0.1, 0, 0, 0, 0, 0, 0], load: [0.4, 0.3, 0.3, 0.3, 0.4, 0.6, 1.0, 1.3, 1.0, 0.7, 0.6, 0.6, 0.7, 0.7, 0.8, 0.9, 1.1, 1.6, 2.1, 2.4, 2.0, 1.4, 0.8, 0.5], soc: [35, 31, 28, 26, 25, 26, 29, 34, 40, 48, 56, 64, 68, 66, 60, 52, 44, 38, 34, 32, 32, 33, 34, 34] },
+            winter: { solar: [0, 0, 0, 0, 0, 0, 0.5, 1.8, 3.2, 4.4, 5.0, 5.4, 5.3, 4.8, 3.8, 2.4, 1.0, 0.2, 0, 0, 0, 0, 0, 0], load: [0.5, 0.4, 0.4, 0.4, 0.5, 0.7, 1.1, 1.3, 1.0, 0.8, 0.7, 0.7, 0.7, 0.7, 0.8, 1.0, 1.3, 1.9, 2.6, 2.9, 2.3, 1.6, 1.0, 0.6], soc: [38, 34, 31, 29, 28, 29, 33, 40, 50, 62, 74, 84, 90, 92, 88, 80, 68, 56, 46, 40, 38, 39, 39, 38] }
+        };
+        const hourLabels = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0') + ':00');
+        let currentSeason = 'summer';
+        let currentCandidateKey = 'npv';
+        const API_BASE = "http://localhost:8000";
+        let usingDemoData = true;
+
+        async function runSizing() {
+            const btn = document.getElementById('cta-btn');
+            const status = document.getElementById('cta-status');
+            const billValue = document.querySelector('.amount-input input').value.replace(/,/g, '');
+            const citySelect = document.querySelectorAll('select')[0];
+            const budgetInputs = document.querySelectorAll('.amount-input input');
+            const budgetValue = budgetInputs[1] ? budgetInputs[1].value.replace(/,/g, '') : '';
+            const subsidyYes = document.querySelectorAll('.toggle-pair button')[0].classList.contains('active');
+            const depthThorough = document.querySelector('.depth-card:nth-child(2)').classList.contains('active');
+
+            btn.disabled = true;
+            btn.textContent = 'Running simulation…';
+            status.textContent = depthThorough
+                ? 'Thorough search can take 20+ minutes — this will not time out.'
+                : 'Quick search — typically a few minutes.';
+
+            try {
+                const resp = await fetch(API_BASE + '/api/size', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        monthly_bill_inr: parseFloat(billValue) || 2400,
+                        city: citySelect.value.split(',')[0].trim(),
+                        budget_cap_inr: budgetValue ? parseFloat(budgetValue) : null,
+                        subsidy_eligible: subsidyYes,
+                        depth: depthThorough ? 'thorough' : 'quick',
+                    }),
+                });
+                if (!resp.ok) throw new Error(await resp.text());
+                const data = await resp.json();
+
+                candidates.payback = mapApiCandidate(data.payback);
+                candidates.npv = mapApiCandidate(data.npv);
+                candidates.backup = mapApiCandidate(data.backup);
+                usingDemoData = false;
+                renderValidation(data.validation);
+
+                updateTabCards();
+                status.textContent = '';
+            } catch (err) {
+                console.warn('Sizing API unreachable, using demo data:', err);
+                status.textContent = '⚠ Could not reach the sizing backend — showing demo data instead.';
+                usingDemoData = true;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Run sizing simulation →';
+                showView('report');
+            }
+        }
+
+        function renderValidation(validation) {
+            if (!validation) return;
+            const checked = validation.controllers_checked || [];
+            ['rule_based', 'mpc', 'dqn'].forEach(key => {
+                const el = document.getElementById('trust-' + key);
+                if (!el) return;
+                const wasChecked = checked.includes(key);
+                el.style.opacity = wasChecked ? '1' : '0.35';
+                el.querySelector('.trust-check').textContent = wasChecked ? '✓' : '—';
+                if (!wasChecked) el.querySelector('.td').textContent = 'Not run for this request.';
+            });
+
+            const verdictEl = document.getElementById('trust-verdict-text');
+            const labelEl = document.getElementById('trust-label');
+            if (validation.verdict === 'skipped') {
+                labelEl.textContent = 'Validation skipped';
+                verdictEl.textContent = 'This run skipped the rule-based/MPC/DQN spot-check — numbers reflect the search baseline only.';
+            } else if (validation.verdict === 'not_run') {
+                labelEl.textContent = 'Validation unavailable';
+                verdictEl.textContent = 'The spot-check could not complete for this request — treat the ranking as unconfirmed.';
+            } else if (validation.verdict === 'stable') {
+                labelEl.textContent = 'Checked ' + checked.length + ' way' + (checked.length === 1 ? '' : 's');
+                verdictEl.textContent = 'Every controller checked agrees on this ranking — high confidence.';
+            } else if (validation.verdict === 'near_tie_only') {
+                labelEl.textContent = 'Checked ' + checked.length + ' way' + (checked.length === 1 ? '' : 's');
+                verdictEl.textContent = 'Controllers differ only on near-identical candidates — medium confidence.';
+            } else {
+                labelEl.textContent = 'Checked ' + checked.length + ' way' + (checked.length === 1 ? '' : 's');
+                verdictEl.textContent = '⚠ Controllers genuinely disagree on ranking — recommendation follows MPC, low confidence. Review before presenting to the customer.';
+                verdictEl.style.color = 'var(--rust-deep)';
+            }
+        }
+
+        function mapApiCandidate(c) {
+            return {
+                panel: c.panel, battery: c.battery, capex: c.capex, subsidy: c.subsidy, net: c.net,
+                npv: c.npv, npv_label: (c.npv / 100000).toFixed(1) + 'L', payback: c.payback, irr: c.irr,
+                monthly: c.monthly, annual: c.annual, lifetime: c.lifetime,
+                tiltDeg: c.tiltDeg, azimuth: c.azimuth, arcEnd: 100 + (c.panel / 10) * 45,
+                backupPct: c.backupPct, outageDesc: c.outageDesc,
+            };
+        }
+
+        function updateTabCards() {
+            const rows = { payback: candidates.payback, npv: candidates.npv, backup: candidates.backup };
+            document.querySelectorAll('.tab-card').forEach(card => {
+                const key = card.dataset.tab;
+                const c = rows[key];
+                if (!c) return;
+                if (key === 'payback') card.querySelector('.ov').textContent = c.payback.toFixed(1) + ' yrs';
+                if (key === 'npv') card.querySelector('.ov').textContent = '₹' + c.lifetime;
+                if (key === 'backup') card.querySelector('.ov').textContent = c.backupPct.toFixed(1) + '%';
+            });
+            renderCandidate(document.querySelector('.tab-card.active').dataset.tab);
+        }
+
+        window.dayChart = null;
+        function buildChart() {
+            const ctx = document.getElementById('dayChart').getContext('2d');
+            window.dayChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: hourLabels,
+                    datasets: [
+                        { label: 'Solar generation (kW)', data: seasonData.summer.solar, borderColor: '#E5A032', backgroundColor: 'rgba(229,160,50,0.12)', fill: true, tension: 0.35, yAxisID: 'y', pointRadius: 0, borderWidth: 2 },
+                        { label: 'Household load (kW)', data: seasonData.summer.load, borderColor: '#12203A', borderDash: [4, 3], fill: false, tension: 0.35, yAxisID: 'y', pointRadius: 0, borderWidth: 1.5 },
+                        { label: 'Battery SOC (%)', data: seasonData.summer.soc, borderColor: '#2F6E73', fill: false, tension: 0.35, yAxisID: 'y1', pointRadius: 0, borderWidth: 2 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 9, boxHeight: 9, usePointStyle: true, font: { size: 11 }, color: '#55606E' } }, tooltip: { backgroundColor: '#12203A', padding: 10, titleFont: { size: 12 }, bodyFont: { size: 12 } } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 10 }, color: '#8B92A0' } },
+                        y: { position: 'left', title: { display: true, text: 'kW', font: { size: 11 } }, grid: { color: '#EFEEE8' }, ticks: { font: { size: 10 }, color: '#8B92A0' } },
+                        y1: { position: 'right', min: 0, max: 100, title: { display: true, text: 'SOC %', font: { size: 11 } }, grid: { display: false }, ticks: { font: { size: 10 }, color: '#8B92A0' } }
+                    }
+                }
+            });
+            updateOutageBand(currentCandidateKey);
+        }
+
+        function selectSeason(el, season) {
+            document.querySelectorAll('.season-toggle button').forEach(b => b.classList.remove('active'));
+            el.classList.add('active');
+            currentSeason = season;
+            const d = seasonData[season];
+            window.dayChart.data.datasets[0].data = d.solar;
+            window.dayChart.data.datasets[1].data = d.load;
+            window.dayChart.data.datasets[2].data = d.soc;
+            window.dayChart.update();
+        }
+
+        function updateOutageBand(key) {
+            currentCandidateKey = key;
+        }
+
+        function selectPill(el) { el.parentElement.querySelectorAll('.pill-option').forEach(p => p.classList.remove('active')); el.classList.add('active'); }
+        function selectToggle(el) { el.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active')); el.classList.add('active'); }
+        function selectDepth(el) {
+            el.parentElement.querySelectorAll('.depth-card').forEach(d => d.classList.remove('active'));
+            el.classList.add('active');
+            const isThorough = el.querySelector('.t').textContent.indexOf('Thorough') === 0;
+            document.getElementById('search-caption').textContent = isThorough
+                ? 'Based on a thorough search — a continuous panel, battery, tilt and azimuth sweep, ~2,000 configurations simulated.'
+                : 'Based on a quick search — 48 configurations simulated across a full year.';
+        }
+        function showView(v) {
+            document.getElementById('view-input').style.display = v === 'input' ? 'block' : 'none';
+            document.getElementById('view-report').style.display = v === 'report' ? 'block' : 'none';
+            document.getElementById('btn-input').classList.toggle('active', v === 'input');
+            document.getElementById('btn-report').classList.toggle('active', v === 'report');
+            if (v === 'report' && !window.dayChart) { buildChart(); renderCandidate('npv'); }
+        }
+    </script>
+
+</body>
+
+</html>
