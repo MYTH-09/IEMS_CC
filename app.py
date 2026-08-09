@@ -195,6 +195,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from pipeline_routes import router as pipeline_router
+app.include_router(pipeline_router)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Request / response schemas
@@ -362,11 +364,17 @@ def size_system(req: SizingRequest) -> dict:
         # for the real pop=40/gen=50 version this stands in for).
         from src.sizing.nsga2_sizing import run_nsga2
         baseline_cost = compute_baseline_annual_cost(load_kw, timestamps, grid, seed=42)
+        # pareto = run_nsga2(
+        #     load_kw=load_kw, timestamps=timestamps, grid=grid,
+        #     solar_curve_fn=solar_curve,   # picklable — safe for n_workers > 1, unlike the old lambda
+        #     financial_config=financial_config, baseline_annual_cost_inr=baseline_cost,
+        #     pop_size=12, n_generations=8, episode_days=180, seed=42, n_workers=req.n_workers,
+        # )
         pareto = run_nsga2(
             load_kw=load_kw, timestamps=timestamps, grid=grid,
-            solar_curve_fn=solar_curve,   # picklable — safe for n_workers > 1, unlike the old lambda
+            solar_curve_fn=solar_curve,
             financial_config=financial_config, baseline_annual_cost_inr=baseline_cost,
-            pop_size=12, n_generations=8, episode_days=180, seed=42, n_workers=req.n_workers,
+            pop_size=40, n_generations=50, episode_days=365, seed=42, n_workers=req.n_workers,
         )
         # run_nsga2 now computes annual_savings_inr directly (re-simulates
         # each final front point once) — no placeholder/approximation needed.

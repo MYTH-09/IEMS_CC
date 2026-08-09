@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IEMS — Pipeline Demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap"
+        rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --paper: #F7F8F6;
+            --panel: #FFFFFF;
+            --ink: #12203A;
+            --ink-soft: #55606E;
+            --ink-faint: #8B92A0;
+            --gold: #E5A032;
+            --gold-deep: #935F14;
+            --gold-tint: #FBEEDA;
+            --teal: #2F6E73;
+            --teal-deep: #1B4448;
+            --teal-tint: #E1EEEE;
+            --rust: #B5533C;
+            --rust-deep: #7A3626;
+            --rust-tint: #F7E7E1;
+            --line: #E1DFD6;
+            --radius: 10px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: var(--paper);
+            color: var(--ink);
+            font-family: 'Inter', -apple-system, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .font-mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .shell {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 40px 24px 96px;
+        }
+
+        .brand-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .brand-mark {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            background: var(--ink);
+            position: relative;
+            flex: none;
+        }
+
+        .brand-mark::after {
+            content: '';
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid var(--gold);
+        }
+
+        .brand-name {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 15px;
+        }
+
+        .brand-tag {
+            font-size: 12px;
+            color: var(--ink-faint);
+            margin-left: 8px;
+            padding-left: 8px;
+            border-left: 1px solid var(--line);
+        }
+
+        .h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 26px;
+            margin: 10px 0 6px;
+            letter-spacing: -0.01em;
+        }
+
+        .lede {
+            font-size: 14px;
+            color: var(--ink-soft);
+            line-height: 1.6;
+            margin: 0 0 28px;
+            max-width: 620px;
+        }
+
+        /* ---- Input bar ---- */
+        .input-bar {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+            padding: 18px 20px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            margin-bottom: 28px;
+            flex-wrap: wrap;
+        }
+
+        .input-field {
+            flex: 1;
+            min-width: 140px;
+        }
+
+        .input-field label {
+            display: block;
+            font-size: 11.5px;
+            color: var(--ink-soft);
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        .input-field input,
+        .input-field select {
+            width: 100%;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 9px 11px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 13.5px;
+            color: var(--ink);
+            background: var(--paper);
+        }
+
+        .run-btn {
+            padding: 10px 22px;
+            border: none;
+            border-radius: 8px;
+            background: var(--ink);
+            color: white;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 13.5px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .run-btn:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        .run-btn:not(:disabled):hover {
+            background: #1C2E4F;
+        }
+
+        /* ---- Tab strip ---- */
+        .tab-strip {
+            display: flex;
+            gap: 4px;
+            overflow-x: auto;
+            padding-bottom: 2px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .tab-btn {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 10px 14px;
+            border: none;
+            background: transparent;
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--ink-soft);
+            cursor: pointer;
+            white-space: nowrap;
+            border-bottom: 2px solid transparent;
+        }
+
+        .tab-btn.active {
+            color: var(--ink);
+            border-bottom-color: var(--gold);
+        }
+
+        .tab-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex: none;
+            background: var(--line);
+        }
+
+        .tab-dot.pending {
+            background: var(--ink-faint);
+        }
+
+        .tab-dot.running {
+            background: var(--gold);
+            animation: pulse 1.1s ease-in-out infinite;
+        }
+
+        .tab-dot.done {
+            background: var(--teal);
+        }
+
+        .tab-dot.failed,
+        .tab-dot.blocked {
+            background: var(--rust);
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.35;
+            }
+        }
+
+        .panel {
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 24px 26px;
+            background: var(--panel);
+        }
+
+        .panel+.panel {
+            margin-top: 14px;
+        }
+
+        .section-label {
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--ink-faint);
+            margin: 0 0 14px;
+        }
+
+        .state-msg {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            text-align: center;
+            color: var(--ink-soft);
+            font-size: 13.5px;
+        }
+
+        .state-msg .spinner {
+            width: 26px;
+            height: 26px;
+            border: 3px solid var(--line);
+            border-top-color: var(--gold);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 14px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .state-msg.error {
+            color: var(--rust-deep);
+        }
+
+        .state-msg .err-detail {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 11.5px;
+            color: var(--rust);
+            margin-top: 8px;
+            max-width: 480px;
+            background: var(--rust-tint);
+            padding: 10px 14px;
+            border-radius: 8px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 20px;
+        }
+
+        .badge.real {
+            background: var(--teal-tint);
+            color: var(--teal-deep);
+        }
+
+        .badge.synthetic {
+            background: var(--gold-tint);
+            color: var(--gold-deep);
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .stat-card {
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 14px 16px;
+        }
+
+        .stat-card .label {
+            font-size: 11px;
+            color: var(--ink-soft);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 6px;
+        }
+
+        .stat-card .value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .stat-card .value .u {
+            font-size: 11.5px;
+            color: var(--ink-faint);
+            font-weight: 500;
+            margin-left: 2px;
+        }
+
+        .rec-callout {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            background: var(--gold-tint);
+            border-radius: var(--radius);
+            font-size: 13px;
+            margin-top: 16px;
+        }
+
+        .rec-callout b {
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        table.data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12.5px;
+            margin-top: 14px;
+        }
+
+        table.data-table th {
+            text-align: left;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            color: var(--ink-faint);
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        table.data-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--line);
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        table.data-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .compare-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 6px;
+        }
+
+        .compare-card {
+            border-radius: 14px;
+            padding: 22px;
+        }
+
+        .compare-card.without {
+            background: var(--rust-tint);
+        }
+
+        .compare-card.with {
+            background: var(--teal-tint);
+        }
+
+        .compare-card .ct {
+            font-size: 12.5px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .compare-card.without .ct {
+            color: var(--rust-deep);
+        }
+
+        .compare-card.with .ct {
+            color: var(--teal-deep);
+        }
+
+        .compare-card .cv {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 26px;
+            font-weight: 600;
+        }
+
+        .compare-card.without .cv {
+            color: var(--rust-deep);
+        }
+
+        .compare-card.with .cv {
+            color: var(--teal-deep);
+        }
+
+        .compare-card .cl {
+            font-size: 12px;
+            margin-top: 3px;
+        }
+
+        .compare-card.without .cl {
+            color: #8C4834;
+        }
+
+        .compare-card.with .cl {
+            color: #2A5A5E;
+        }
+
+        .winner-tag {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 9px;
+            border-radius: 20px;
+            background: var(--ink);
+            color: white;
+            display: inline-block;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="shell">
+        <div class="brand-row">
+            <div class="brand-mark"></div>
+            <div class="brand-name">IEMS</div>
+            <div class="brand-tag">Pipeline walkthrough</div>
+        </div>
+        <h1 class="h1">Every stage, end to end</h1>
+        <p class="lede">Submit one household, watch all nine stages of the real pipeline run — data generation, physics
+            simulation, sizing search, and every controller — with the actual computed results, not a mockup.</p>
+
+        <div class="input-bar">
+            <div class="input-field">
+                <label>Monthly bill (₹)</label>
+                <input type="text" id="in-bill" value="2400">
+            </div>
+            <div class="input-field">
+                <label>City</label>
+                <select id="in-city">
+                    <option>Mathura</option>
+                    <option>Bareilly</option>
+                </select>
+            </div>
+            <div class="input-field">
+                <label>Subsidy eligible</label>
+                <select id="in-subsidy">
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                </select>
+            </div>
+            <button class="run-btn" id="run-btn" onclick="startPipeline()">Run full pipeline →</button>
+        </div>
+
+        <div class="tab-strip" id="tab-strip"></div>
+        <div id="tab-content"></div>
+    </div>
+
+    <script>
+        const API_BASE = "http://localhost:8000";
+
+        const STAGES = [
+            { key: "synthetic_load", label: "Synthetic Load" },
+            { key: "solar_generation", label: "Solar Generation" },
+            { key: "grid_search", label: "Grid Search" },
+            { key: "ga", label: "GA (NSGA-II)" },
+            { key: "rule_based", label: "Rule-Based" },
+            { key: "mpc_normal", label: "MPC — Normal" },
+            { key: "mpc_weather", label: "MPC — Weather" },
+            { key: "dqn", label: "DQN" },
+            { key: "outage_proof", label: "Outage Protection Proof" },
+        ];
+
+        let currentJobId = null;
+        let currentTab = "synthetic_load";
+        let pollTimer = null;
+        let stageStatus = {};      // key -> 'pending'|'running'|'done'|'failed'|'blocked'
+        let stageResults = {};     // key -> fetched result payload (cached)
+        let stageErrors = {};      // key -> error string
+        let charts = {};           // key -> Chart.js instance, so we can destroy before re-render
+
+        function renderTabStrip() {
+            const strip = document.getElementById("tab-strip");
+            strip.innerHTML = "";
+            STAGES.forEach(s => {
+                const btn = document.createElement("button");
+                btn.className = "tab-btn" + (s.key === currentTab ? " active" : "");
+                const status = stageStatus[s.key] || "pending";
+                btn.innerHTML = `<span class="tab-dot ${status}"></span>${s.label}`;
+                btn.onclick = () => { currentTab = s.key; renderTabStrip(); renderActiveTab(); };
+                strip.appendChild(btn);
+            });
+        }
+
+        async function startPipeline() {
+            const btn = document.getElementById("run-btn");
+            btn.disabled = true;
+            btn.textContent = "Starting…";
+
+            stageStatus = {}; stageResults = {}; stageErrors = {};
+            STAGES.forEach(s => stageStatus[s.key] = "pending");
+            renderTabStrip();
+            currentTab = "synthetic_load";
+            renderActiveTab();
+
+            try {
+                const resp = await fetch(API_BASE + "/api/pipeline/start", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        monthly_bill_inr: parseFloat(document.getElementById("in-bill").value) || 2400,
+                        city: document.getElementById("in-city").value,
+                        subsidy_eligible: document.getElementById("in-subsidy").value === "true",
+                        ga_pop_size: 12, ga_n_gen: 8,
+                    }),
+                });
+                if (!resp.ok) throw new Error(await resp.text());
+                const data = await resp.json();
+                currentJobId = data.job_id;
+                btn.textContent = "Pipeline running…";
+                if (pollTimer) clearInterval(pollTimer);
+                pollTimer = setInterval(pollStatus, 1800);
+                pollStatus();
+            } catch (err) {
+                console.error(err);
+                btn.disabled = false;
+                btn.textContent = "Run full pipeline →";
+                alert("Could not reach the pipeline backend — is uvicorn running on :8000?");
+            }
+        }
+
+        async function pollStatus() {
+            if (!currentJobId) return;
+            const resp = await fetch(`${API_BASE}/api/pipeline/status/${currentJobId}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+
+            let anyChanged = false;
+            for (const s of STAGES) {
+                const newStatus = data.stages[s.key]?.status || "pending";
+                if (stageStatus[s.key] !== newStatus) { anyChanged = true; }
+                stageStatus[s.key] = newStatus;
+                if (newStatus === "failed" || newStatus === "blocked") {
+                    stageErrors[s.key] = data.stages[s.key]?.error || "No further detail available.";
+                }
+            }
+
+            if (anyChanged) renderTabStrip();
+
+            // Fetch results for any newly-done stage we haven't cached yet
+            for (const s of STAGES) {
+                if (stageStatus[s.key] === "done" && !stageResults[s.key]) {
+                    try {
+                        const r = await fetch(`${API_BASE}/api/pipeline/result/${currentJobId}/${s.key}`);
+                        if (r.ok) { stageResults[s.key] = await r.json(); anyChanged = true; }
+                    } catch (e) { /* will retry next poll */ }
+                }
+            }
+
+            if (anyChanged) renderActiveTab();
+
+            const allTerminal = STAGES.every(s => ["done", "failed", "blocked"].includes(stageStatus[s.key]));
+            if (allTerminal) {
+                clearInterval(pollTimer);
+                document.getElementById("run-btn").disabled = false;
+                document.getElementById("run-btn").textContent = "Run full pipeline →";
+            }
+        }
+
+        function renderActiveTab() {
+            const el = document.getElementById("tab-content");
+            const status = stageStatus[currentTab] || "pending";
+
+            if (status === "pending") {
+                el.innerHTML = `<div class="panel"><div class="state-msg">Waiting to start — click "Run full pipeline" above.</div></div>`;
+                return;
+            }
+            if (status === "running") {
+                el.innerHTML = `<div class="panel"><div class="state-msg"><div class="spinner"></div>Running ${STAGES.find(s => s.key === currentTab).label}…</div></div>`;
+                return;
+            }
+            if (status === "failed" || status === "blocked") {
+                el.innerHTML = `<div class="panel"><div class="state-msg error">
+        This stage ${status === "blocked" ? "was blocked because its dependency failed" : "failed"}.
+        <div class="err-detail">${escapeHtml(stageErrors[currentTab] || "")}</div>
+      </div></div>`;
+                return;
+            }
+            // status === "done"
+            const data = stageResults[currentTab];
+            if (!data) {
+                el.innerHTML = `<div class="panel"><div class="state-msg"><div class="spinner"></div>Loading result…</div></div>`;
+                return;
+            }
+            RENDERERS[currentTab](el, data);
+        }
+
+        function escapeHtml(s) {
+            const d = document.createElement("div"); d.textContent = s; return d.innerHTML;
+        }
+        function sourceBadge(source) {
+            const isReal = source && source.startsWith("real_");
+            return `<span class="badge ${isReal ? "real" : "synthetic"}">${isReal ? "✓ Real data" : "⚠ Synthetic fallback"}</span>`;
+        }
+
+        function destroyChart(key) { if (charts[key]) { charts[key].destroy(); delete charts[key]; } }
+
+        // ─────────────────────────────────────────────────────────────────────────
+        // Per-stage renderers — each matches the EXACT result schema stage_functions.py returns
+        // ─────────────────────────────────────────────────────────────────────────
+
+        const RENDERERS = {
+
+            synthetic_load(el, d) {
+                el.innerHTML = `
+      <div class="panel">
+        <p class="section-label">Average daily consumption shape ${sourceBadge(d.source)}</p>
+        <canvas id="chart-synthetic_load" height="90"></canvas>
+        <div class="stat-grid">
+          <div class="stat-card"><div class="label">Daily target</div><div class="value">${d.daily_kwh_target}<span class="u">kWh</span></div></div>
+          <div class="stat-card"><div class="label">Peak load</div><div class="value">${d.peak_kw}<span class="u">kW</span></div></div>
+        </div>
+      </div>`;
+                destroyChart("synthetic_load");
+                charts.synthetic_load = new Chart(document.getElementById("chart-synthetic_load"), {
+                    type: "line",
+                    data: {
+                        labels: d.chart.hour_labels, datasets: [{
+                            label: "Load (kW)", data: d.chart.values_kw,
+                            borderColor: "#12203A", backgroundColor: "rgba(18,32,58,0.08)", fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        plugins: { legend: { display: false } }, scales: {
+                            x: { grid: { display: false }, ticks: { font: { size: 10 }, maxTicksLimit: 8 } },
+                            y: { grid: { color: "#EFEEE8" }, title: { display: true, text: "kW" } }
+                        }
+                    },
+                });
+            },
+
+            solar_generation(el, d) {
+                el.innerHTML = `
+      <div class="panel">
+        <p class="section-label">Monthly solar yield (3 kWp reference system) ${sourceBadge(d.source)}</p>
+        <canvas id="chart-solar_generation" height="90"></canvas>
+        <div class="stat-grid">
+          <div class="stat-card"><div class="label">Annual yield (3kWp)</div><div class="value">${d.annual_yield_kwh_3kwp}<span class="u">kWh</span></div></div>
+        </div>
+      </div>`;
+                destroyChart("solar_generation");
+                charts.solar_generation = new Chart(document.getElementById("chart-solar_generation"), {
+                    type: "bar",
+                    data: { labels: d.chart.months, datasets: [{ label: "kWh", data: d.chart.kwh, backgroundColor: "#E5A032", borderRadius: 4 }] },
+                    options: { plugins: { legend: { display: false } }, scales: { y: { grid: { color: "#EFEEE8" }, title: { display: true, text: "kWh" } }, x: { grid: { display: false } } } },
+                });
+            },
+
+            grid_search(el, d) {
+                el.innerHTML = `
+      <div class="panel">
+        <p class="section-label">${d.n_configurations} configurations simulated — NPV by system size</p>
+        <canvas id="chart-grid_search" height="100"></canvas>
+        <div class="rec-callout">💡 Recommended (best NPV): <b>${d.recommended.panel_kw}kW panel + ${d.recommended.battery_kwh}kWh battery</b></div>
+      </div>`;
+                destroyChart("grid_search");
+                charts.grid_search = new Chart(document.getElementById("chart-grid_search"), {
+                    type: "bubble",
+                    data: {
+                        datasets: [{
+                            label: "System (bubble size = battery kWh)",
+                            data: d.chart.panel_kw.map((p, i) => ({ x: p, y: d.chart.npv[i], r: Math.max(4, d.chart.battery_kwh[i]) })),
+                            backgroundColor: "rgba(229,160,50,0.55)", borderColor: "#935F14"
+                        }]
+                    },
+                    options: {
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { title: { display: true, text: "Panel size (kW)" }, grid: { color: "#EFEEE8" } },
+                            y: { title: { display: true, text: "25-year NPV (₹)" }, grid: { color: "#EFEEE8" } }
+                        }
+                    },
+                });
+            },
+
+            ga(el, d) {
+                el.innerHTML = `
+      <div class="panel">
+        <p class="section-label">${d.n_configurations}-point Pareto front — CAPEX vs. NPV (bubble = unmet load)</p>
+        <canvas id="chart-ga" height="100"></canvas>
+        <div class="rec-callout">💡 Recommended: <b>${d.recommended.panel_kw}kW / ${d.recommended.battery_kwh}kWh</b>, tilt ${d.recommended.tilt_deg}°, facing ${d.recommended.azimuth_deg}°</div>
+      </div>`;
+                destroyChart("ga");
+                charts.ga = new Chart(document.getElementById("chart-ga"), {
+                    type: "bubble",
+                    data: {
+                        datasets: [{
+                            label: "Pareto candidate (bubble size = unmet load kWh)",
+                            data: d.chart.capex.map((c, i) => ({ x: c, y: d.chart.npv[i], r: Math.max(4, Math.min(20, d.chart.unmet_kwh[i] / 20)) })),
+                            backgroundColor: "rgba(47,110,115,0.5)", borderColor: "#1B4448"
+                        }]
+                    },
+                    options: {
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { title: { display: true, text: "CAPEX (₹)" }, grid: { color: "#EFEEE8" } },
+                            y: { title: { display: true, text: "25-year NPV (₹)" }, grid: { color: "#EFEEE8" } }
+                        }
+                    },
+                });
+            },
+
+            rule_based(el, d) { renderControllerTab(el, d, "rule_based", "Rule-Based Control"); },
+            mpc_normal(el, d) { renderControllerTab(el, d, "mpc_normal", "MPC — Persistence Forecast"); },
+            mpc_weather(el, d) { renderControllerTab(el, d, "mpc_weather", "MPC — Real Streamed Forecast"); },
+            dqn(el, d) { renderControllerTab(el, d, "dqn", "DQN — Learned Control"); },
+
+            outage_proof(el, d) {
+                const withBetter = d.with_solar.unmet_load_kwh < d.without_solar.unmet_load_kwh;
+                el.innerHTML = `
+      <div class="panel">
+        <p class="section-label">Best-performing controller: <b>${d.best_controller.replace('_', ' ')}</b></p>
+        <div class="compare-row">
+          <div class="compare-card without">
+            <div class="ct">WITHOUT SOLAR + BATTERY</div>
+            <div class="cv">${d.without_solar.unmet_load_kwh}<span style="font-size:14px"> kWh</span></div>
+            <div class="cl">unmet load during outages</div>
+            <div class="cl" style="margin-top:8px">Annual cost: ₹${d.without_solar.cost_inr.toLocaleString('en-IN')}</div>
+          </div>
+          <div class="compare-card with">
+            <div class="ct">WITH SOLAR + BATTERY (${d.best_controller.replace('_', ' ')})</div>
+            <div class="cv">${d.with_solar.unmet_load_kwh}<span style="font-size:14px"> kWh</span></div>
+            <div class="cl">unmet load during outages</div>
+            <div class="cl" style="margin-top:8px">Annual cost: ₹${d.with_solar.cost_inr.toLocaleString('en-IN')}</div>
+            ${withBetter ? '<div class="winner-tag">✓ Outage protection proven</div>' : ''}
+          </div>
+        </div>
+      </div>`;
+            },
+        };
+
+        function renderControllerTab(el, d, key, title) {
+            el.innerHTML = `
+    <div class="panel">
+      <p class="section-label">${title} — system: ${d.panel_kw}kW / ${d.battery_kwh}kWh, first-day battery SOC</p>
+      <canvas id="chart-${key}" height="90"></canvas>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="label">Total cost</div><div class="value">₹${d.total_cost_inr.toLocaleString('en-IN')}</div></div>
+        <div class="stat-card"><div class="label">Grid import</div><div class="value">${d.grid_import_kwh}<span class="u">kWh</span></div></div>
+        <div class="stat-card"><div class="label">Unmet load</div><div class="value">${d.unmet_load_kwh}<span class="u">kWh</span></div></div>
+      </div>
+    </div>`;
+            destroyChart(key);
+            charts[key] = new Chart(document.getElementById(`chart-${key}`), {
+                type: "line",
+                data: {
+                    labels: d.chart.hours, datasets: [{
+                        label: "SOC %", data: d.chart.soc_pct,
+                        borderColor: "#2F6E73", backgroundColor: "rgba(47,110,115,0.1)", fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2
+                    }]
+                },
+                options: {
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { size: 9 }, maxTicksLimit: 8 } },
+                        y: { min: 0, max: 100, grid: { color: "#EFEEE8" }, title: { display: true, text: "SOC %" } }
+                    }
+                },
+            });
+        }
+
+        // Initial render
+        renderTabStrip();
+        renderActiveTab();
+    </script>
+
+</body>
+
+</html>

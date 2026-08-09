@@ -40,7 +40,7 @@ than letting MPC bypass the environment's own action-resolution logic.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Callable
 
 import numpy as np
 import cvxpy as cp
@@ -96,6 +96,7 @@ class MPCController(BaseController):
         action_threshold_kw: float = 0.05,
         solver: Optional[str] = None,
         dt_hours: float = 0.25,
+        forecast_provider: Optional[Callable] = None,
     ):
         self.horizon_hours = horizon_hours
         self.unmet_penalty_rate_inr = unmet_penalty_rate_inr
@@ -108,6 +109,7 @@ class MPCController(BaseController):
 
         self._problem = None
         self._battery_spec: Optional[tuple] = None   # (capacity, eta_c, eta_d, min_soc, max_soc, max_c, max_d)
+        self.forecast_provider = forecast_provider
 
     def reset(self) -> None:
         pass   # MPC is stateless across steps — each solve is self-contained
@@ -244,7 +246,10 @@ class MPCController(BaseController):
             self._build_problem(battery)
             self._battery_spec = battery_spec
 
-        solar_forecast, load_forecast = self._forecast(env, self.horizon_steps)
+        if self.forecast_provider is not None:
+            solar_forecast, load_forecast = self.forecast_provider(env, self.horizon_steps)
+        else:
+            solar_forecast, load_forecast = self._forecast(env, self.horizon_steps)
         outage_forecast = self._forecast_outages(env, self.horizon_steps)
         rate = env.grid.marginal_rate(env._cumulative_units_this_month)
 

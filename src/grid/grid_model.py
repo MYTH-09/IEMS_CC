@@ -91,6 +91,7 @@ class GridModel:
         outage_lookup: Optional[pd.Series] = None,
         fallback_outage_hours_per_day: float = 4.0,
         outage_peak_hours: Optional[list[int]] = None,
+        monthly_outage_multiplier: Optional[dict[int, float]] = None,   # ADD THIS LINE
     ):
         """
         Parameters
@@ -119,6 +120,7 @@ class GridModel:
         self._outage_lookup = outage_lookup
         self._fallback_outage_hours_per_day = fallback_outage_hours_per_day
         self._outage_peak_hours = outage_peak_hours or [10, 14, 18, 22]
+        self._monthly_outage_multiplier = monthly_outage_multiplier or {}   # ADD THIS LINE
 
         self._validate_slabs()
 
@@ -238,12 +240,11 @@ class GridModel:
         approximating the configured average daily outage hours.
         """
         hour = timestamp.hour
-        # Higher probability near configured peak outage hours
+        month = timestamp.month                                                    # ADD
         base_prob = self._fallback_outage_hours_per_day / 24.0
         peak_boost = 2.0 if hour in self._outage_peak_hours else 1.0
-        prob = min(base_prob * peak_boost, 1.0)
-
-        # Deterministic pseudo-random draw from a hash of the timestamp
+        month_mult = self._monthly_outage_multiplier.get(month, 1.0)                # ADD
+        prob = min(base_prob * peak_boost * month_mult, 1.0)                        # CHANGED
         seed_val = hash((timestamp.date(), hour)) % (2**32)
         rng = np.random.default_rng(seed_val)
         return bool(rng.random() < prob)

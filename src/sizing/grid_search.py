@@ -313,6 +313,12 @@ def top_recommendations(df: pd.DataFrame, n: int = 3) -> dict:
     Extract top candidates by three different priorities, since there's
     no single "optimal" answer — a customer might prioritize any of these.
 
+    Works with BOTH grid_search's output schema (has outage_steps_covered)
+    AND nsga2_sizing's output schema (has annual_unmet_load_kwh only) —
+    the NSGA-II Pareto front never had an outage_steps_covered column,
+    so calling this with "thorough" depth's DataFrame previously raised
+    KeyError: 'outage_steps_covered'.
+
     Returns
     -------
     dict with keys 'fastest_payback', 'best_npv', 'best_backup', each a
@@ -321,8 +327,23 @@ def top_recommendations(df: pd.DataFrame, n: int = 3) -> dict:
     # Exclude systems that never pay back (inf) from the payback ranking
     payback_candidates = df[np.isfinite(df["payback_years"])]
 
+    if "annual_unmet_load_kwh" in df.columns:
+        # Lower unmet load = better backup coverage. Present in both
+        # grid_search's and nsga2_sizing's output — the reliable choice.
+        best_backup = df.nsmallest(n, "annual_unmet_load_kwh")
+    elif "outage_steps_covered" in df.columns:
+        # Fallback for any caller whose DataFrame only has this older
+        # grid_search-specific column (higher = better here).
+        best_backup = df.nlargest(n, "outage_steps_covered")
+    else:
+        raise KeyError(
+            "top_recommendations(): DataFrame has neither "
+            "'annual_unmet_load_kwh' nor 'outage_steps_covered' — "
+            "cannot determine a backup-coverage ranking."
+        )
+
     return {
         "fastest_payback": payback_candidates.nsmallest(n, "payback_years"),
         "best_npv":         df.nlargest(n, "npv_25yr_inr"),
-        "best_backup":      df.nlargest(n, "outage_steps_covered"),
+        "best_backup":      best_backup,
     }

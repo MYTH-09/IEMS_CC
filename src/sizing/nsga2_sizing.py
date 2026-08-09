@@ -196,7 +196,7 @@ def run_nsga2(
     financial_config: dict,
     baseline_annual_cost_inr: float,
     pop_size: int = 40,
-    n_generations: int = 50,
+    n_generations: int = 20,
     episode_days: int = 365,
     seed: int = 42,
     n_workers: Optional[int] = None,
