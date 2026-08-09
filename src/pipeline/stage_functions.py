@@ -300,7 +300,11 @@ async def stage_grid_search(params: dict, get_upstream: Callable) -> dict:
         recs = top_recommendations(df, n=1)
         extra = ["subsidy_amount_inr", "irr_pct", "outage_steps_covered"]
 
-        best_npv_row = recs["best_npv"].iloc[0]
+        # The system fed to the controller tabs (rule_based/mpc/dqn) is the BEST
+        # OUTAGE PROTECTION candidate (lowest annual_unmet_load_kwh), not best NPV —
+        # the controller tabs exist specifically to prove outage resilience, so they
+        # should simulate the system actually chosen for that purpose.
+        sized_row = recs["best_backup"].iloc[0]
 
         return {
             "table": df.round(2).to_dict(orient="records"),
@@ -312,7 +316,7 @@ async def stage_grid_search(params: dict, get_upstream: Callable) -> dict:
                 "payback": [p if np.isfinite(p) else None for p in df["payback_years"].tolist()],
                 "battery_kwh": df["battery_kwh"].tolist(),
             },
-            "recommended": {"panel_kw": float(best_npv_row["panel_kw"]), "battery_kwh": float(best_npv_row["battery_kwh"])},
+            "recommended": {"panel_kw": float(sized_row["panel_kw"]), "battery_kwh": float(sized_row["battery_kwh"])},
             "recommendations": {
                 "fastest_payback": _candidate_json(recs["fastest_payback"].iloc[0], extra),
                 "best_npv": _candidate_json(recs["best_npv"].iloc[0], extra),
@@ -359,7 +363,10 @@ async def stage_ga(params: dict, get_upstream: Callable) -> dict:
         recs = top_recommendations(pareto, n=1)
         extra = ["tilt_deg", "azimuth_deg"]
 
-        best = pareto.loc[pareto["npv_25yr_inr"].idxmax()]
+        # Same rationale as stage_grid_search: controller tabs simulate the
+        # BEST OUTAGE PROTECTION candidate, not best NPV.
+        sized_row = recs["best_backup"].iloc[0]
+
         return {
             "table": pareto.round(2).to_dict(orient="records"),
             "table_top10": pareto.head(10).round(2).to_dict(orient="records"),
@@ -375,8 +382,8 @@ async def stage_ga(params: dict, get_upstream: Callable) -> dict:
                 "payback": [p if np.isfinite(p) else None for p in pareto["payback_years"].tolist()],
                 "unmet_kwh": pareto["annual_unmet_load_kwh"].tolist(),
             },
-            "recommended": {"panel_kw": float(best["panel_kw"]), "battery_kwh": float(best["battery_kwh"]),
-                             "tilt_deg": float(best["tilt_deg"]), "azimuth_deg": float(best["azimuth_deg"])},
+            "recommended": {"panel_kw": float(sized_row["panel_kw"]), "battery_kwh": float(sized_row["battery_kwh"]),
+                             "tilt_deg": float(sized_row["tilt_deg"]), "azimuth_deg": float(sized_row["azimuth_deg"])},
             "recommendations": {
                 "fastest_payback": _candidate_json(recs["fastest_payback"].iloc[0], extra),
                 "best_npv": _candidate_json(recs["best_npv"].iloc[0], extra),
