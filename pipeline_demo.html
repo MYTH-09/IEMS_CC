@@ -386,16 +386,33 @@
             color: var(--ink-faint);
             padding: 8px 10px;
             border-bottom: 1px solid var(--line);
+            white-space: nowrap;
         }
 
         table.data-table td {
             padding: 8px 10px;
             border-bottom: 1px solid var(--line);
             font-family: 'IBM Plex Mono', monospace;
+            white-space: nowrap;
         }
 
         table.data-table tr:last-child td {
             border-bottom: none;
+        }
+
+        table.data-table tr:hover td {
+            background: var(--paper);
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+            margin-top: 4px;
+        }
+
+        .table-note {
+            font-size: 11.5px;
+            color: var(--ink-faint);
+            margin-top: 8px;
         }
 
         .compare-row {
@@ -469,6 +486,119 @@
             display: inline-block;
             margin-top: 10px;
         }
+
+        /* ---- New: recommendation cards (3-way) ---- */
+        .rec-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .rec-card {
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 15px 16px;
+            background: var(--paper);
+        }
+
+        .rec-card .rc-title {
+            font-size: 11.5px;
+            font-weight: 600;
+            color: var(--gold-deep);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 4px;
+        }
+
+        .rec-card .rc-system {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 14.5px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .rec-card .rc-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            padding: 3px 0;
+            color: var(--ink-soft);
+            border-top: 1px solid var(--line);
+        }
+
+        .rec-card .rc-row:first-of-type {
+            border-top: none;
+        }
+
+        .rec-card .rc-row b {
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--ink);
+            font-weight: 600;
+        }
+
+        /* ---- New: chart row layouts ---- */
+        .chart-row-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            margin-top: 18px;
+            align-items: start;
+        }
+
+        .chart-sublabel {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--ink-faint);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            margin-bottom: 8px;
+        }
+
+        /* ---- New: mini stat rows (cost breakdown, outage coverage) ---- */
+        .mini-stat-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 6px;
+            flex-wrap: wrap;
+        }
+
+        .mini-stat {
+            flex: 1;
+            min-width: 130px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+
+        .mini-stat .l {
+            font-size: 10.5px;
+            color: var(--ink-faint);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .mini-stat .v {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 14.5px;
+            font-weight: 600;
+            margin-top: 3px;
+        }
+
+        .baseline-note {
+            font-size: 12.5px;
+            color: var(--ink-soft);
+            background: var(--paper);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-top: 14px;
+        }
+
+        .baseline-note b {
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--ink);
+        }
     </style>
 </head>
 
@@ -525,13 +655,18 @@
             { key: "outage_proof", label: "Outage Protection Proof" },
         ];
 
+        const CONTROLLER_LABELS = {
+            rule_based: "Rule-Based", mpc_normal: "MPC (Persistence)",
+            mpc_weather: "MPC (Real Forecast)", dqn: "DQN",
+        };
+
         let currentJobId = null;
         let currentTab = "synthetic_load";
         let pollTimer = null;
         let stageStatus = {};      // key -> 'pending'|'running'|'done'|'failed'|'blocked'
         let stageResults = {};     // key -> fetched result payload (cached)
         let stageErrors = {};      // key -> error string
-        let charts = {};           // key -> Chart.js instance, so we can destroy before re-render
+        let charts = {};           // chart-key -> Chart.js instance, so we can destroy before re-render
 
         function renderTabStrip() {
             const strip = document.getElementById("tab-strip");
@@ -655,11 +790,59 @@
             const isReal = source && source.startsWith("real_");
             return `<span class="badge ${isReal ? "real" : "synthetic"}">${isReal ? "✓ Real data" : "⚠ Synthetic fallback"}</span>`;
         }
+        function fmtInr(n) {
+            if (n === null || n === undefined) return "—";
+            return "₹" + Number(n).toLocaleString('en-IN');
+        }
+        function fmtYears(n) {
+            if (n === null || n === undefined) return "never";
+            return n.toFixed(1) + "yr";
+        }
 
         function destroyChart(key) { if (charts[key]) { charts[key].destroy(); delete charts[key]; } }
+        function destroyChartsWithPrefix(prefix) {
+            Object.keys(charts).filter(k => k.startsWith(prefix)).forEach(destroyChart);
+        }
 
         // ─────────────────────────────────────────────────────────────────────────
-        // Per-stage renderers — each matches the EXACT result schema stage_functions.py returns
+        // Small reusable builders
+        // ─────────────────────────────────────────────────────────────────────────
+
+        function gridSearchExtraRows(c) {
+            if (!c) return "";
+            let rows = "";
+            if (c.subsidy_amount_inr !== undefined) rows += `<div class="rc-row"><span>PM Surya Ghar subsidy</span><b>−${fmtInr(c.subsidy_amount_inr)}</b></div>`;
+            if (c.irr_pct !== undefined) rows += `<div class="rc-row"><span>IRR</span><b>${c.irr_pct}%</b></div>`;
+            if (c.outage_steps_covered !== undefined) rows += `<div class="rc-row"><span>Outage steps covered</span><b>${Math.round(c.outage_steps_covered)}</b></div>`;
+            return rows;
+        }
+
+        function recCardHtml(title, c, extraRows) {
+            if (!c) return "";
+            let rows = `
+        <div class="rc-row"><span>CAPEX</span><b>${fmtInr(c.total_capex_inr)}</b></div>
+        <div class="rc-row"><span>25yr NPV</span><b>${fmtInr(c.npv_25yr_inr)}</b></div>
+        <div class="rc-row"><span>Payback</span><b>${fmtYears(c.payback_years)}</b></div>
+        <div class="rc-row"><span>Annual savings</span><b>${fmtInr(c.annual_savings_inr)}</b></div>
+        <div class="rc-row"><span>Unmet load</span><b>${c.annual_unmet_load_kwh} kWh/yr</b></div>`;
+            if (extraRows) rows += extraRows;
+            return `
+      <div class="rec-card">
+        <div class="rc-title">${title}</div>
+        <div class="rc-system">${c.panel_kw}kW / ${c.battery_kwh}kWh</div>
+        ${rows}
+      </div>`;
+        }
+
+        function dataTable(rows, columns) {
+            if (!rows || rows.length === 0) return `<p class="table-note">No rows.</p>`;
+            const thead = columns.map(c => `<th>${c.label}</th>`).join("");
+            const tbody = rows.map(r => `<tr>${columns.map(c => `<td>${c.fmt ? c.fmt(r[c.key]) : (r[c.key] ?? "—")}</td>`).join("")}</tr>`).join("");
+            return `<div class="table-wrap"><table class="data-table"><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table></div>`;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────
+        // Per-stage renderers — each matches the result schema stage_functions.py returns
         // ─────────────────────────────────────────────────────────────────────────
 
         const RENDERERS = {
@@ -671,10 +854,24 @@
         <canvas id="chart-synthetic_load" height="90"></canvas>
         <div class="stat-grid">
           <div class="stat-card"><div class="label">Daily target</div><div class="value">${d.daily_kwh_target}<span class="u">kWh</span></div></div>
+          <div class="stat-card"><div class="label">Annual target</div><div class="value">${Math.round(d.annual_kwh_target).toLocaleString('en-IN')}<span class="u">kWh</span></div></div>
           <div class="stat-card"><div class="label">Peak load</div><div class="value">${d.peak_kw}<span class="u">kW</span></div></div>
+          <div class="stat-card"><div class="label">Average load</div><div class="value">${d.avg_kw}<span class="u">kW</span></div></div>
+          <div class="stat-card"><div class="label">Min load</div><div class="value">${d.min_kw}<span class="u">kW</span></div></div>
+        </div>
+        <div class="chart-row-2">
+          <div>
+            <p class="chart-sublabel">Load duration curve — how often load reaches X kW</p>
+            <canvas id="chart-synthetic_load_duration" height="140"></canvas>
+          </div>
+          <div>
+            <p class="chart-sublabel">Seasonal shape — avg daily kWh by month</p>
+            <canvas id="chart-synthetic_load_monthly" height="140"></canvas>
+          </div>
         </div>
       </div>`;
-                destroyChart("synthetic_load");
+                destroyChartsWithPrefix("synthetic_load");
+
                 charts.synthetic_load = new Chart(document.getElementById("chart-synthetic_load"), {
                     type: "line",
                     data: {
@@ -690,6 +887,29 @@
                         }
                     },
                 });
+
+                charts.synthetic_load_duration = new Chart(document.getElementById("chart-synthetic_load_duration"), {
+                    type: "line",
+                    data: {
+                        labels: d.duration_curve.pct_of_time.map(p => p + "%"),
+                        datasets: [{
+                            label: "Load (kW)", data: d.duration_curve.kw,
+                            borderColor: "#935F14", backgroundColor: "rgba(229,160,50,0.12)", fill: true, tension: 0.15, pointRadius: 0, borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        plugins: { legend: { display: false } }, scales: {
+                            x: { title: { display: true, text: "% of time load ≥ this level" }, grid: { display: false }, ticks: { maxTicksLimit: 6, font: { size: 10 } } },
+                            y: { grid: { color: "#EFEEE8" }, title: { display: true, text: "kW" } }
+                        }
+                    },
+                });
+
+                charts.synthetic_load_monthly = new Chart(document.getElementById("chart-synthetic_load_monthly"), {
+                    type: "bar",
+                    data: { labels: d.monthly.months, datasets: [{ label: "kWh/day", data: d.monthly.avg_daily_kwh, backgroundColor: "#2F6E73", borderRadius: 4 }] },
+                    options: { plugins: { legend: { display: false } }, scales: { y: { grid: { color: "#EFEEE8" }, title: { display: true, text: "kWh/day" } }, x: { grid: { display: false } } } },
+                });
             },
 
             solar_generation(el, d) {
@@ -698,25 +918,67 @@
         <p class="section-label">Monthly solar yield (3 kWp reference system) ${sourceBadge(d.source)}</p>
         <canvas id="chart-solar_generation" height="90"></canvas>
         <div class="stat-grid">
-          <div class="stat-card"><div class="label">Annual yield (3kWp)</div><div class="value">${d.annual_yield_kwh_3kwp}<span class="u">kWh</span></div></div>
+          <div class="stat-card"><div class="label">Annual yield (3kWp)</div><div class="value">${d.annual_yield_kwh_3kwp.toLocaleString('en-IN')}<span class="u">kWh</span></div></div>
+          <div class="stat-card"><div class="label">Capacity factor</div><div class="value">${d.capacity_factor_pct}<span class="u">%</span></div></div>
+          <div class="stat-card"><div class="label">Peak sun hours</div><div class="value">${d.peak_sun_hours_per_day}<span class="u">hr/day</span></div></div>
         </div>
+        <p class="chart-sublabel" style="margin-top:20px">Average daily generation shape (3kWp reference)</p>
+        <canvas id="chart-solar_generation_day" height="90"></canvas>
       </div>`;
-                destroyChart("solar_generation");
+                destroyChartsWithPrefix("solar_generation");
                 charts.solar_generation = new Chart(document.getElementById("chart-solar_generation"), {
                     type: "bar",
                     data: { labels: d.chart.months, datasets: [{ label: "kWh", data: d.chart.kwh, backgroundColor: "#E5A032", borderRadius: 4 }] },
                     options: { plugins: { legend: { display: false } }, scales: { y: { grid: { color: "#EFEEE8" }, title: { display: true, text: "kWh" } }, x: { grid: { display: false } } } },
                 });
+                charts.solar_generation_day = new Chart(document.getElementById("chart-solar_generation_day"), {
+                    type: "line",
+                    data: {
+                        labels: d.day_shape.hour_labels, datasets: [{
+                            label: "Generation (kW)", data: d.day_shape.values_kw,
+                            borderColor: "#935F14", backgroundColor: "rgba(229,160,50,0.15)", fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        plugins: { legend: { display: false } }, scales: {
+                            x: { grid: { display: false }, ticks: { font: { size: 10 }, maxTicksLimit: 8 } },
+                            y: { grid: { color: "#EFEEE8" }, title: { display: true, text: "kW" } }
+                        }
+                    },
+                });
             },
 
             grid_search(el, d) {
+                const cols = [
+                    { key: "panel_kw", label: "Panel (kW)" }, { key: "battery_kwh", label: "Battery (kWh)" },
+                    { key: "total_capex_inr", label: "CAPEX", fmt: fmtInr }, { key: "payback_years", label: "Payback", fmt: fmtYears },
+                    { key: "npv_25yr_inr", label: "NPV (25yr)", fmt: fmtInr }, { key: "annual_unmet_load_kwh", label: "Unmet (kWh/yr)" },
+                    { key: "irr_pct", label: "IRR %" },
+                ];
                 el.innerHTML = `
       <div class="panel">
-        <p class="section-label">${d.n_configurations} configurations simulated — NPV by system size</p>
-        <canvas id="chart-grid_search" height="100"></canvas>
-        <div class="rec-callout">💡 Recommended (best NPV): <b>${d.recommended.panel_kw}kW panel + ${d.recommended.battery_kwh}kWh battery</b></div>
+        <p class="section-label">${d.n_configurations} configurations simulated</p>
+        <div class="baseline-note">No-solar baseline: <b>${fmtInr(d.baseline.annual_cost_inr)}/yr</b>, <b>${d.baseline.annual_grid_import_kwh.toLocaleString('en-IN')} kWh/yr</b> imported — every "savings" figure below is measured against this.</div>
+        <div class="rec-grid">
+          ${recCardHtml("⚡ Fastest payback", d.recommendations.fastest_payback, gridSearchExtraRows(d.recommendations.fastest_payback))}
+          ${recCardHtml("💰 Best 25yr NPV", d.recommendations.best_npv, gridSearchExtraRows(d.recommendations.best_npv))}
+          ${recCardHtml("🔋 Best outage backup", d.recommendations.best_backup, gridSearchExtraRows(d.recommendations.best_backup))}
+        </div>
+        <div class="chart-row-2">
+          <div>
+            <p class="chart-sublabel">Panel size vs NPV (bubble = battery kWh)</p>
+            <canvas id="chart-grid_search" height="130"></canvas>
+          </div>
+          <div>
+            <p class="chart-sublabel">CAPEX vs payback (bubble = battery kWh)</p>
+            <canvas id="chart-grid_search_capexpayback" height="130"></canvas>
+          </div>
+        </div>
+        <p class="chart-sublabel" style="margin-top:20px">Top 10 configurations by NPV</p>
+        ${dataTable(d.table_top10, cols)}
+        <p class="table-note">${d.n_configurations} total combinations simulated — showing the top 10 by 25-year NPV.</p>
       </div>`;
-                destroyChart("grid_search");
+                destroyChartsWithPrefix("grid_search");
                 charts.grid_search = new Chart(document.getElementById("chart-grid_search"), {
                     type: "bubble",
                     data: {
@@ -734,16 +996,56 @@
                         }
                     },
                 });
+                charts.grid_search_capexpayback = new Chart(document.getElementById("chart-grid_search_capexpayback"), {
+                    type: "bubble",
+                    data: {
+                        datasets: [{
+                            label: "System (bubble size = battery kWh)",
+                            data: d.chart_capex_payback.capex.map((c, i) => ({ x: c, y: d.chart_capex_payback.payback[i], r: Math.max(4, d.chart_capex_payback.battery_kwh[i]) })).filter(p => p.y !== null),
+                            backgroundColor: "rgba(47,110,115,0.5)", borderColor: "#1B4448"
+                        }]
+                    },
+                    options: {
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { title: { display: true, text: "CAPEX (₹)" }, grid: { color: "#EFEEE8" } },
+                            y: { title: { display: true, text: "Payback (years)" }, grid: { color: "#EFEEE8" } }
+                        }
+                    },
+                });
             },
 
             ga(el, d) {
+                const cols = [
+                    { key: "panel_kw", label: "Panel (kW)" }, { key: "battery_kwh", label: "Battery (kWh)" },
+                    { key: "tilt_deg", label: "Tilt °" }, { key: "azimuth_deg", label: "Azimuth °" },
+                    { key: "total_capex_inr", label: "CAPEX", fmt: fmtInr }, { key: "payback_years", label: "Payback", fmt: fmtYears },
+                    { key: "npv_25yr_inr", label: "NPV (25yr)", fmt: fmtInr }, { key: "annual_unmet_load_kwh", label: "Unmet (kWh/yr)" },
+                ];
                 el.innerHTML = `
       <div class="panel">
-        <p class="section-label">${d.n_configurations}-point Pareto front — CAPEX vs. NPV (bubble = unmet load)</p>
-        <canvas id="chart-ga" height="100"></canvas>
-        <div class="rec-callout">💡 Recommended: <b>${d.recommended.panel_kw}kW / ${d.recommended.battery_kwh}kWh</b>, tilt ${d.recommended.tilt_deg}°, facing ${d.recommended.azimuth_deg}°</div>
+        <p class="section-label">${d.n_configurations}-point Pareto front — continuous panel/battery/tilt/azimuth search</p>
+        <div class="baseline-note">No-solar baseline: <b>${fmtInr(d.baseline.annual_cost_inr)}/yr</b> — every "savings" figure below is measured against this.</div>
+        <div class="rec-grid">
+          ${recCardHtml("⚡ Fastest payback", d.recommendations.fastest_payback, d.recommendations.fastest_payback ? `<div class="rc-row"><span>Orientation</span><b>${d.recommendations.fastest_payback.tilt_deg}° / ${d.recommendations.fastest_payback.azimuth_deg}°</b></div>` : "")}
+          ${recCardHtml("💰 Best 25yr NPV", d.recommendations.best_npv, d.recommendations.best_npv ? `<div class="rc-row"><span>Orientation</span><b>${d.recommendations.best_npv.tilt_deg}° / ${d.recommendations.best_npv.azimuth_deg}°</b></div>` : "")}
+          ${recCardHtml("🔋 Best outage backup", d.recommendations.best_backup, d.recommendations.best_backup ? `<div class="rc-row"><span>Orientation</span><b>${d.recommendations.best_backup.tilt_deg}° / ${d.recommendations.best_backup.azimuth_deg}°</b></div>` : "")}
+        </div>
+        <div class="chart-row-2">
+          <div>
+            <p class="chart-sublabel">CAPEX vs NPV (bubble = unmet load)</p>
+            <canvas id="chart-ga" height="130"></canvas>
+          </div>
+          <div>
+            <p class="chart-sublabel">Panel orientation across the front (tilt vs azimuth, bubble = NPV)</p>
+            <canvas id="chart-ga_orientation" height="130"></canvas>
+          </div>
+        </div>
+        <p class="chart-sublabel" style="margin-top:20px">Top 10 Pareto points by NPV</p>
+        ${dataTable(d.table_top10, cols)}
+        <p class="table-note">${d.n_configurations} non-dominated points on the front — showing the top 10 by 25-year NPV.</p>
       </div>`;
-                destroyChart("ga");
+                destroyChartsWithPrefix("ga");
                 charts.ga = new Chart(document.getElementById("chart-ga"), {
                     type: "bubble",
                     data: {
@@ -761,6 +1063,24 @@
                         }
                     },
                 });
+                const maxNpv = Math.max(...d.chart_orientation.npv, 1);
+                charts.ga_orientation = new Chart(document.getElementById("chart-ga_orientation"), {
+                    type: "bubble",
+                    data: {
+                        datasets: [{
+                            label: "Candidate (bubble size = NPV)",
+                            data: d.chart_orientation.tilt_deg.map((t, i) => ({ x: t, y: d.chart_orientation.azimuth_deg[i], r: Math.max(3, 14 * Math.max(d.chart_orientation.npv[i], 0) / maxNpv) })),
+                            backgroundColor: "rgba(229,160,50,0.5)", borderColor: "#935F14"
+                        }]
+                    },
+                    options: {
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { title: { display: true, text: "Tilt (°)" }, grid: { color: "#EFEEE8" } },
+                            y: { title: { display: true, text: "Azimuth (° — 180 = due south)" }, grid: { color: "#EFEEE8" } }
+                        }
+                    },
+                });
             },
 
             rule_based(el, d) { renderControllerTab(el, d, "rule_based", "Rule-Based Control"); },
@@ -770,9 +1090,19 @@
 
             outage_proof(el, d) {
                 const withBetter = d.with_solar.unmet_load_kwh < d.without_solar.unmet_load_kwh;
+                const names = Object.keys(d.all_controllers);
+                const cols = [
+                    { key: "_label", label: "Controller" },
+                    { key: "unmet_load_kwh", label: "Unmet (kWh)" },
+                    { key: "cost_inr", label: "Cost", fmt: fmtInr },
+                    { key: "grid_import_kwh", label: "Grid import (kWh)" },
+                    { key: "outage_coverage_pct", label: "Outage coverage %" },
+                ];
+                const tableRows = names.map(n => ({ _label: (n === d.best_controller ? "★ " : "") + (CONTROLLER_LABELS[n] || n), ...d.all_controllers[n] }));
+
                 el.innerHTML = `
       <div class="panel">
-        <p class="section-label">Best-performing controller: <b>${d.best_controller.replace('_', ' ')}</b></p>
+        <p class="section-label">Best-performing controller: <b>${(CONTROLLER_LABELS[d.best_controller] || d.best_controller)}</b></p>
         <div class="compare-row">
           <div class="compare-card without">
             <div class="ct">WITHOUT SOLAR + BATTERY</div>
@@ -781,42 +1111,106 @@
             <div class="cl" style="margin-top:8px">Annual cost: ₹${d.without_solar.cost_inr.toLocaleString('en-IN')}</div>
           </div>
           <div class="compare-card with">
-            <div class="ct">WITH SOLAR + BATTERY (${d.best_controller.replace('_', ' ')})</div>
+            <div class="ct">WITH SOLAR + BATTERY (${(CONTROLLER_LABELS[d.best_controller] || d.best_controller)})</div>
             <div class="cv">${d.with_solar.unmet_load_kwh}<span style="font-size:14px"> kWh</span></div>
             <div class="cl">unmet load during outages</div>
             <div class="cl" style="margin-top:8px">Annual cost: ₹${d.with_solar.cost_inr.toLocaleString('en-IN')}</div>
             ${withBetter ? '<div class="winner-tag">✓ Outage protection proven</div>' : ''}
           </div>
         </div>
+        <p class="chart-sublabel" style="margin-top:20px">All four controllers, same hardware — unmet load vs cost</p>
+        <canvas id="chart-outage_proof" height="100"></canvas>
+        ${dataTable(tableRows, cols)}
+        <p class="table-note">★ = lowest unmet load among controllers that completed successfully. A controller can be missing here if it failed or was blocked (e.g. DQN with no trained policy file).</p>
       </div>`;
+                destroyChartsWithPrefix("outage_proof");
+                charts.outage_proof = new Chart(document.getElementById("chart-outage_proof"), {
+                    data: {
+                        labels: names.map(n => CONTROLLER_LABELS[n] || n),
+                        datasets: [
+                            { type: "bar", label: "Unmet load (kWh)", data: names.map(n => d.all_controllers[n].unmet_load_kwh), backgroundColor: "rgba(181,83,60,0.55)", borderColor: "#7A3626", yAxisID: "y" },
+                            { type: "line", label: "Cost (₹)", data: names.map(n => d.all_controllers[n].cost_inr), borderColor: "#1B4448", backgroundColor: "#1B4448", yAxisID: "y1", tension: 0.2 },
+                        ]
+                    },
+                    options: {
+                        plugins: { legend: { display: true, labels: { boxWidth: 12, font: { size: 11 } } } },
+                        scales: {
+                            x: { grid: { display: false } },
+                            y: { position: "left", title: { display: true, text: "Unmet load (kWh)" }, grid: { color: "#EFEEE8" } },
+                            y1: { position: "right", title: { display: true, text: "Annual cost (₹)" }, grid: { display: false } },
+                        }
+                    },
+                });
             },
         };
 
         function renderControllerTab(el, d, key, title) {
+            const b = d.cost_breakdown, o = d.outage;
             el.innerHTML = `
     <div class="panel">
-      <p class="section-label">${title} — system: ${d.panel_kw}kW / ${d.battery_kwh}kWh, first-day battery SOC</p>
-      <canvas id="chart-${key}" height="90"></canvas>
+      <p class="section-label">${title} — system: ${d.panel_kw}kW / ${d.battery_kwh}kWh, full ${d.daily_chart.day_labels.length}-day episode</p>
       <div class="stat-grid">
         <div class="stat-card"><div class="label">Total cost</div><div class="value">₹${d.total_cost_inr.toLocaleString('en-IN')}</div></div>
         <div class="stat-card"><div class="label">Grid import</div><div class="value">${d.grid_import_kwh}<span class="u">kWh</span></div></div>
+        <div class="stat-card"><div class="label">Grid export</div><div class="value">${d.grid_export_kwh}<span class="u">kWh</span></div></div>
         <div class="stat-card"><div class="label">Unmet load</div><div class="value">${d.unmet_load_kwh}<span class="u">kWh</span></div></div>
+        <div class="stat-card"><div class="label">Outage coverage</div><div class="value">${o.coverage_pct}<span class="u">%</span></div></div>
       </div>
+      <p class="chart-sublabel" style="margin-top:18px">Cost breakdown (sums to total cost)</p>
+      <div class="mini-stat-row">
+        <div class="mini-stat"><div class="l">Grid import cost</div><div class="v">₹${b.import_cost_inr.toLocaleString('en-IN')}</div></div>
+        <div class="mini-stat"><div class="l">Export credit</div><div class="v">−₹${b.export_credit_inr.toLocaleString('en-IN')}</div></div>
+        <div class="mini-stat"><div class="l">Unmet-load penalty</div><div class="v">₹${b.unmet_penalty_inr.toLocaleString('en-IN')}</div></div>
+        <div class="mini-stat"><div class="l">Outage steps (15min)</div><div class="v">${o.steps_unmet} unmet / ${o.steps_total} total</div></div>
+      </div>
+
+      <p class="chart-sublabel" style="margin-top:20px">First ${Math.round(d.detail_chart.labels.length / 96)} days — SOC, solar, load, grid import (shaded = grid outage)</p>
+      <canvas id="chart-${key}" height="110"></canvas>
+
+      <p class="chart-sublabel" style="margin-top:20px">Full episode — daily energy flows and cost</p>
+      <canvas id="chart-${key}_daily" height="110"></canvas>
     </div>`;
-            destroyChart(key);
+            destroyChartsWithPrefix(key);
+
+            const det = d.detail_chart;
             charts[key] = new Chart(document.getElementById(`chart-${key}`), {
-                type: "line",
                 data: {
-                    labels: d.chart.hours, datasets: [{
-                        label: "SOC %", data: d.chart.soc_pct,
-                        borderColor: "#2F6E73", backgroundColor: "rgba(47,110,115,0.1)", fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2
-                    }]
+                    labels: det.labels,
+                    datasets: [
+                        { type: "bar", label: "Grid outage", data: det.outage.map(o => o * 100), backgroundColor: "rgba(181,83,60,0.14)", borderWidth: 0, yAxisID: "y", order: 0, barPercentage: 1.0, categoryPercentage: 1.0 },
+                        { type: "line", label: "SOC %", data: det.soc_pct, borderColor: "#2F6E73", backgroundColor: "rgba(47,110,115,0.08)", fill: true, tension: 0.25, pointRadius: 0, borderWidth: 2, yAxisID: "y", order: 3 },
+                        { type: "line", label: "Solar (kW)", data: det.solar_kw, borderColor: "#E5A032", pointRadius: 0, borderWidth: 1.5, yAxisID: "y2", order: 2 },
+                        { type: "line", label: "Load (kW)", data: det.load_kw, borderColor: "#12203A", pointRadius: 0, borderWidth: 1.5, yAxisID: "y2", order: 2 },
+                        { type: "line", label: "Grid import (kW)", data: det.grid_import_kw, borderColor: "#B5533C", pointRadius: 0, borderWidth: 1.5, yAxisID: "y2", order: 2, borderDash: [3, 2] },
+                    ]
                 },
                 options: {
-                    plugins: { legend: { display: false } },
+                    plugins: { legend: { display: true, labels: { boxWidth: 12, font: { size: 10.5 } } } },
                     scales: {
-                        x: { grid: { display: false }, ticks: { font: { size: 9 }, maxTicksLimit: 8 } },
-                        y: { min: 0, max: 100, grid: { color: "#EFEEE8" }, title: { display: true, text: "SOC %" } }
+                        x: { grid: { display: false }, ticks: { font: { size: 9 }, maxTicksLimit: 10 } },
+                        y: { min: 0, max: 100, position: "left", grid: { color: "#EFEEE8" }, title: { display: true, text: "SOC % / outage" } },
+                        y2: { position: "right", grid: { display: false }, title: { display: true, text: "kW" } },
+                    }
+                },
+            });
+
+            const dc = d.daily_chart;
+            charts[`${key}_daily`] = new Chart(document.getElementById(`chart-${key}_daily`), {
+                data: {
+                    labels: dc.day_labels,
+                    datasets: [
+                        { type: "bar", label: "Grid import (kWh)", data: dc.grid_import_kwh, backgroundColor: "rgba(181,83,60,0.55)", yAxisID: "y" },
+                        { type: "bar", label: "Grid export (kWh)", data: dc.grid_export_kwh, backgroundColor: "rgba(47,110,115,0.55)", yAxisID: "y" },
+                        { type: "bar", label: "Unmet load (kWh)", data: dc.unmet_load_kwh, backgroundColor: "rgba(18,32,58,0.7)", yAxisID: "y" },
+                        { type: "line", label: "Daily cost (₹)", data: dc.daily_cost_inr, borderColor: "#935F14", backgroundColor: "#935F14", pointRadius: 0, borderWidth: 2, yAxisID: "y1" },
+                    ]
+                },
+                options: {
+                    plugins: { legend: { display: true, labels: { boxWidth: 12, font: { size: 10.5 } } } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { size: 9 }, maxTicksLimit: 15 } },
+                        y: { position: "left", grid: { color: "#EFEEE8" }, title: { display: true, text: "kWh / day" } },
+                        y1: { position: "right", grid: { display: false }, title: { display: true, text: "₹ / day" } },
                     }
                 },
             });

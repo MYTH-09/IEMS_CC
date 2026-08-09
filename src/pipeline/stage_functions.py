@@ -15,6 +15,18 @@ Chart payloads are pre-shaped here (not left for the frontend to compute)
 so each stage's `result` is directly what its tab needs to render —
 keeps the frontend as a thin rendering layer over real, already-processed
 numbers.
+
+Enrichment pass (this revision)
+------------------------------------
+Every stage previously returned 2-3 headline numbers and a single chart,
+even though most of the richer underlying data (full grid-search/GA
+tables, per-controller cost breakdowns, per-day outage performance, all
+four controllers' results) was already being computed and then thrown
+away before it reached the frontend. This revision surfaces that data
+instead of discarding it — no stage does meaningfully more *computation*
+than before, they just stop dropping most of what they already computed
+on the floor. The one real new computation is `_run_controller_demo`
+walking the full episode (previously only the first day was sampled).
 """
 
 from __future__ import annotations
@@ -28,7 +40,7 @@ import pandas as pd
 from loguru import logger
 
 from src.grid.grid_model import GridModel
-from src.environment.energy_env import EnergyEnv
+from src.environment.energy_env import EnergyEnv, UNMET_LOAD_PENALTY_RATE_INR
 from src.controllers.rule_based import RuleBasedController
 from src.controllers.mpc_controller import MPCController
 from src.sizing.grid_search import run_grid_search, top_recommendations, simulate_system_size
@@ -77,6 +89,8 @@ except ImportError:
 _PROCESSED_DATA_PATH = "data/processed/meters_15min.parquet"
 _DEMO_EPISODE_DAYS = 30   # keep each controller's demo run short (fast tab loads); a
                           # different, longer window backs the headline validated numbers
+_DETAIL_DAYS = 5         # first N days captured at full 15-min resolution for the
+                          # detailed trace chart on each controller tab
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -107,18 +121,64 @@ def _build_grid(city: str) -> GridModel:
     )
 
 
-def _day_shape_chart(load_kw: np.ndarray, timestamps: pd.DatetimeIndex, n_days_avg: int = 30) -> dict:
-    """Average 96-slot daily shape over the first n_days_avg days — the
-    chart synthetic_load and solar_generation both use."""
+def _day_shape_chart(power_kw: np.ndarray, timestamps: pd.DatetimeIndex, n_days_avg: int = 30) -> dict:
+    """Average 96-slot daily shape over the first n_days_avg days — used
+    for both the load and solar 'average day' charts."""
     slots = np.zeros(96)
     counts = np.zeros(96)
-    for i in range(min(len(load_kw), n_days_avg * 96)):
+    for i in range(min(len(power_kw), n_days_avg * 96)):
         slot = i % 96
-        slots[slot] += load_kw[i]
+        slots[slot] += power_kw[i]
         counts[slot] += 1
     avg = np.divide(slots, counts, out=np.zeros_like(slots), where=counts > 0)
     return {"hour_labels": [f"{h:02d}:00" for h in range(24) for _ in range(4)][::4],
             "values_kw": avg[::4].round(3).tolist()}  # downsample to hourly for a cleaner chart
+
+
+def _monthly_avg_daily_kwh(power_kw: np.ndarray, timestamps: pd.DatetimeIndex) -> dict:
+    """Average daily kWh per calendar month present in the series — same
+    grouping pattern already used for solar's monthly yield chart, reused
+    here for load so the load tab gets a comparable seasonal view."""
+    df = pd.DataFrame({"timestamp": timestamps[: len(power_kw)], "kw": power_kw})
+    df["month"] = df["timestamp"].dt.month
+    df["date"] = df["timestamp"].dt.date
+    monthly_kwh = df.groupby("month")["kw"].sum() / 4.0        # kW * 0.25h -> kWh
+    days_per_month = df.groupby("month")["date"].nunique()
+    avg_daily = (monthly_kwh / days_per_month).round(2)
+    return {"months": [f"{m:02d}" for m in avg_daily.index], "avg_daily_kwh": avg_daily.tolist()}
+
+
+def _duration_curve(power_kw: np.ndarray, n_points: int = 50) -> dict:
+    """Load/solar duration curve: values sorted descending, downsampled to
+    n_points evenly-spaced samples — shows 'how often does load/generation
+    reach X kW', a standard sizing chart that a single average-day curve
+    can't show (peaks get smoothed away by averaging)."""
+    sorted_desc = np.sort(power_kw)[::-1]
+    idx = np.linspace(0, len(sorted_desc) - 1, n_points).astype(int)
+    return {
+        "pct_of_time": [round(100 * i / (n_points - 1), 1) for i in range(n_points)],
+        "kw": sorted_desc[idx].round(3).tolist(),
+    }
+
+
+def _candidate_json(row: pd.Series, extra_fields: list[str]) -> dict:
+    """Shape one recommendation row (from top_recommendations()) into
+    plain JSON, keeping only fields that actually exist on this
+    DataFrame's schema (grid_search's and nsga2_sizing's differ slightly
+    — see grid_search.top_recommendations' docstring)."""
+    out = {
+        "panel_kw": float(row["panel_kw"]),
+        "battery_kwh": float(row["battery_kwh"]),
+        "total_capex_inr": round(float(row["total_capex_inr"])),
+        "payback_years": round(float(row["payback_years"]), 1) if np.isfinite(row["payback_years"]) else None,
+        "npv_25yr_inr": round(float(row["npv_25yr_inr"])),
+        "annual_savings_inr": round(float(row["annual_savings_inr"])),
+        "annual_unmet_load_kwh": round(float(row["annual_unmet_load_kwh"]), 1),
+    }
+    for f in extra_fields:
+        if f in row and row[f] == row[f]:   # NaN check
+            out[f] = round(float(row[f]), 1) if isinstance(row[f], (int, float, np.floating, np.integer)) else row[f]
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -145,12 +205,22 @@ async def stage_synthetic_load(params: dict, get_upstream: Callable) -> dict:
 
         load_kw = (raw * 4.0).astype(np.float32)  # kWh/slot -> kW
         timestamps = pd.date_range("2024-01-01", periods=len(load_kw), freq="15min")
+
         chart = _day_shape_chart(load_kw, timestamps)
+        monthly = _monthly_avg_daily_kwh(load_kw, timestamps)
+        duration_curve = _duration_curve(load_kw)
+
         return {
             "load_kw": load_kw, "timestamps": timestamps,   # consumed by downstream stages
-            "chart": chart, "source": source,
+            "chart": chart,
+            "monthly": monthly,
+            "duration_curve": duration_curve,
+            "source": source,
             "daily_kwh_target": round(daily_kwh, 2),
+            "annual_kwh_target": round(daily_kwh * 365, 0),
             "peak_kw": round(float(load_kw.max()), 2),
+            "min_kw": round(float(load_kw.min()), 2),
+            "avg_kw": round(float(load_kw.mean()), 2),
         }
 
     return await asyncio.to_thread(_run)
@@ -179,11 +249,17 @@ async def stage_solar_generation(params: dict, get_upstream: Callable) -> dict:
         monthly["month"] = monthly["timestamp"].dt.month
         monthly_kwh = (monthly.groupby("month")["solar_kw"].sum() / 4.0).round(1)  # kW*0.25h -> kWh
 
+        annual_yield_kwh_3kwp = round(float(solar_kw.sum() / 4.0 / (len(solar_kw)/(365*96))), 0)
+        day_shape = _day_shape_chart(solar_kw, timestamps)   # already at 3kWp reference scale
+
         return {
             "solar_kw_per_kwp": solar_kw / 3.0, "timestamps": timestamps,   # per-kWp for downstream scaling
             "chart": {"months": [f"{m:02d}" for m in monthly_kwh.index], "kwh": monthly_kwh.tolist()},
+            "day_shape": day_shape,
             "source": source,
-            "annual_yield_kwh_3kwp": round(float(solar_kw.sum() / 4.0 / (len(solar_kw)/(365*96))), 0),
+            "annual_yield_kwh_3kwp": annual_yield_kwh_3kwp,
+            "capacity_factor_pct": round(100 * annual_yield_kwh_3kwp / (3.0 * 8760.0), 1),
+            "peak_sun_hours_per_day": round(annual_yield_kwh_3kwp / 3.0 / 365.0, 2),
         }
 
     return await asyncio.to_thread(_run)
@@ -211,14 +287,41 @@ async def stage_grid_search(params: dict, get_upstream: Callable) -> dict:
         df = run_grid_search(load_kw, solar_kw_per_kwp, timestamps, grid,
                               panel_sizes, battery_sizes, financial_config,
                               seed=42, n_workers=params.get("n_workers"))
+
+        # No-solar baseline, computed directly (not self-referentially through
+        # run_grid_search — see app.py's compute_baseline_annual_cost docstring
+        # for why that trap silently zeroes out savings) — shown on the tab so
+        # "savings vs no solar" has a visible reference point, not just a number.
+        baseline = simulate_system_size(
+            load_kw, np.zeros_like(load_kw), timestamps,
+            panel_kw=0.0, battery_kwh=0.0, grid=grid, episode_days=365, seed=42,
+        )
+
         recs = top_recommendations(df, n=1)
+        extra = ["subsidy_amount_inr", "irr_pct", "outage_steps_covered"]
+
         best_npv_row = recs["best_npv"].iloc[0]
 
         return {
             "table": df.round(2).to_dict(orient="records"),
+            "table_top10": df.head(10).round(2).to_dict(orient="records"),
             "chart": {"panel_kw": df["panel_kw"].tolist(), "battery_kwh": df["battery_kwh"].tolist(),
                       "npv": df["npv_25yr_inr"].tolist()},
+            "chart_capex_payback": {
+                "capex": df["total_capex_inr"].tolist(),
+                "payback": [p if np.isfinite(p) else None for p in df["payback_years"].tolist()],
+                "battery_kwh": df["battery_kwh"].tolist(),
+            },
             "recommended": {"panel_kw": float(best_npv_row["panel_kw"]), "battery_kwh": float(best_npv_row["battery_kwh"])},
+            "recommendations": {
+                "fastest_payback": _candidate_json(recs["fastest_payback"].iloc[0], extra),
+                "best_npv": _candidate_json(recs["best_npv"].iloc[0], extra),
+                "best_backup": _candidate_json(recs["best_backup"].iloc[0], extra),
+            },
+            "baseline": {
+                "annual_cost_inr": round(baseline["annual_cost_inr"]),
+                "annual_grid_import_kwh": round(baseline["annual_grid_import_kwh"]),
+            },
             "n_configurations": len(df),
         }
 
@@ -253,13 +356,33 @@ async def stage_ga(params: dict, get_upstream: Callable) -> dict:
                             pop_size=params.get("ga_pop_size", 12), n_generations=params.get("ga_n_gen", 8),
                             episode_days=180, seed=42, n_workers=params.get("n_workers"))
 
+        recs = top_recommendations(pareto, n=1)
+        extra = ["tilt_deg", "azimuth_deg"]
+
         best = pareto.loc[pareto["npv_25yr_inr"].idxmax()]
         return {
             "table": pareto.round(2).to_dict(orient="records"),
+            "table_top10": pareto.head(10).round(2).to_dict(orient="records"),
             "chart": {"capex": pareto["total_capex_inr"].tolist(), "npv": pareto["npv_25yr_inr"].tolist(),
                       "unmet_kwh": pareto["annual_unmet_load_kwh"].tolist()},
+            "chart_orientation": {
+                "tilt_deg": pareto["tilt_deg"].tolist(),
+                "azimuth_deg": pareto["azimuth_deg"].tolist(),
+                "npv": pareto["npv_25yr_inr"].tolist(),
+            },
+            "chart_capex_payback": {
+                "capex": pareto["total_capex_inr"].tolist(),
+                "payback": [p if np.isfinite(p) else None for p in pareto["payback_years"].tolist()],
+                "unmet_kwh": pareto["annual_unmet_load_kwh"].tolist(),
+            },
             "recommended": {"panel_kw": float(best["panel_kw"]), "battery_kwh": float(best["battery_kwh"]),
                              "tilt_deg": float(best["tilt_deg"]), "azimuth_deg": float(best["azimuth_deg"])},
+            "recommendations": {
+                "fastest_payback": _candidate_json(recs["fastest_payback"].iloc[0], extra),
+                "best_npv": _candidate_json(recs["best_npv"].iloc[0], extra),
+                "best_backup": _candidate_json(recs["best_backup"].iloc[0], extra),
+            },
+            "baseline": {"annual_cost_inr": round(baseline_cost)},
             "n_configurations": len(pareto),
         }
 
@@ -281,6 +404,23 @@ def _pick_recommended_system(get_upstream: Callable) -> dict:
 
 
 def _run_controller_demo(load, solar, params, controller, panel_kw, battery_kwh):
+    """
+    Run one controller across the FULL demo episode (previously only the
+    first day was sampled — everything past step 96 was computed and
+    immediately discarded). Now captures:
+      - a full-resolution detail trace for the first `_DETAIL_DAYS` days
+        (SOC / solar / load / grid-import / outage flag) — enough
+        resolution to see actual charge/discharge decisions happen
+      - a per-day aggregate across all `_DEMO_EPISODE_DAYS` days (import,
+        export, unmet, cost, avg SOC) — shows behavior across the whole
+        month, not just a snapshot
+      - a cost breakdown (import cost / export credit / unmet penalty)
+        that sums back to episode_cost_inr, computed from the same
+        per-step marginal rate and net-metering credit the environment
+        itself uses (see EnergyEnv.step's reward composition)
+      - outage coverage: of the timesteps that were actually outages,
+        what fraction had zero unmet load
+    """
     n = min(len(load["load_kw"]), len(solar["solar_kw_per_kwp"]))
     load_kw = load["load_kw"][:n]
     solar_kw = solar["solar_kw_per_kwp"][:n] * panel_kw
@@ -296,20 +436,93 @@ def _run_controller_demo(load, solar, params, controller, panel_kw, battery_kwh)
     obs, info = env.reset(seed=42)
     controller.reset()
 
-    soc_trace, hour_trace = [], []
+    detail_steps = min(_DETAIL_DAYS * 96, env.episode_steps)
+    detail = {"labels": [], "soc_pct": [], "solar_kw": [], "load_kw": [], "grid_import_kw": [], "outage": []}
+
+    n_days = _DEMO_EPISODE_DAYS
+    daily_import = [0.0] * n_days
+    daily_export = [0.0] * n_days
+    daily_unmet = [0.0] * n_days
+    daily_cost = [0.0] * n_days
+    daily_soc_sum = [0.0] * n_days
+    daily_soc_n = [0] * n_days
+
+    outage_steps_total = 0
+    unmet_steps = 0
+    cum_import_cost = 0.0
+    cum_export_credit = 0.0
+    cum_unmet_penalty = 0.0
+
+    step_idx = 0
     terminated = truncated = False
     while not (terminated or truncated):
         action = controller.select_action(env)
         idx_before = env._data_idx
+        was_outage = env.grid.is_outage(env.timestamps[idx_before])
+        solar_now = float(env.solar_kw[idx_before])
+        load_now = float(env.load_kw[idx_before])
+
         obs, reward, terminated, truncated, info = env.step(action)
-        if idx_before < 96:   # capture first day's SOC trace for the chart
-            soc_trace.append(round(env.battery.soc * 100, 1))
-            hour_trace.append(timestamps[idx_before].strftime("%H:%M"))
+
+        if was_outage:
+            outage_steps_total += 1
+            if info["unmet_load_kwh"] > 0:
+                unmet_steps += 1
+
+        import_cost = info["grid_import_kwh"] * info["marginal_rate_inr_per_kwh"]
+        export_credit = info["grid_export_kwh"] * env.grid.net_metering_rate
+        unmet_penalty = info["unmet_load_kwh"] * UNMET_LOAD_PENALTY_RATE_INR
+        cum_import_cost += import_cost
+        cum_export_credit += export_credit
+        cum_unmet_penalty += unmet_penalty
+
+        day = min(step_idx // 96, n_days - 1)
+        daily_import[day] += info["grid_import_kwh"]
+        daily_export[day] += info["grid_export_kwh"]
+        daily_unmet[day] += info["unmet_load_kwh"]
+        daily_cost[day] += (import_cost - export_credit + unmet_penalty)
+        daily_soc_sum[day] += env.battery.soc * 100
+        daily_soc_n[day] += 1
+
+        if step_idx < detail_steps:
+            ts = timestamps[idx_before]
+            detail["labels"].append(f"D{step_idx // 96 + 1} {ts.strftime('%H:%M')}")
+            detail["soc_pct"].append(round(env.battery.soc * 100, 1))
+            detail["solar_kw"].append(round(solar_now, 3))
+            detail["load_kw"].append(round(load_now, 3))
+            detail["grid_import_kw"].append(round(info["grid_import_kwh"] * 4, 3))   # kWh/15min -> avg kW
+            detail["outage"].append(1 if was_outage else 0)
+
+        step_idx += 1
+
+    outage_coverage_pct = (
+        round(100 * (outage_steps_total - unmet_steps) / outage_steps_total, 1)
+        if outage_steps_total > 0 else 100.0
+    )
 
     return {
-        "chart": {"hours": hour_trace, "soc_pct": soc_trace},
+        "detail_chart": detail,
+        "daily_chart": {
+            "day_labels": [f"Day {i+1}" for i in range(n_days)],
+            "grid_import_kwh": [round(v, 2) for v in daily_import],
+            "grid_export_kwh": [round(v, 2) for v in daily_export],
+            "unmet_load_kwh": [round(v, 2) for v in daily_unmet],
+            "daily_cost_inr": [round(v, 2) for v in daily_cost],
+            "avg_soc_pct": [round(daily_soc_sum[i] / daily_soc_n[i], 1) if daily_soc_n[i] else 0.0 for i in range(n_days)],
+        },
+        "cost_breakdown": {
+            "import_cost_inr": round(cum_import_cost, 2),
+            "export_credit_inr": round(cum_export_credit, 2),
+            "unmet_penalty_inr": round(cum_unmet_penalty, 2),
+        },
+        "outage": {
+            "steps_total": outage_steps_total,
+            "steps_unmet": unmet_steps,
+            "coverage_pct": outage_coverage_pct,
+        },
         "total_cost_inr": round(info["episode_cost_inr"], 2),
         "grid_import_kwh": round(info["episode_grid_import_kwh"], 1),
+        "grid_export_kwh": round(info["episode_grid_export_kwh"], 1),
         "unmet_load_kwh": round(info["episode_unmet_load_kwh"], 1),
         "panel_kw": panel_kw, "battery_kwh": battery_kwh,
     }
@@ -411,6 +624,18 @@ async def stage_outage_proof(params: dict, get_upstream: Callable) -> dict:
             "with_solar": {"unmet_load_kwh": best["unmet_load_kwh"], "cost_inr": best["total_cost_inr"]},
             "without_solar": {"unmet_load_kwh": round(info["episode_unmet_load_kwh"], 1),
                                "cost_inr": round(info["episode_cost_inr"], 2)},
+            # All controllers side by side — previously only the winner survived
+            # into the tab and the other three (already fully simulated by this
+            # point) were discarded.
+            "all_controllers": {
+                name: {
+                    "unmet_load_kwh": r["unmet_load_kwh"],
+                    "cost_inr": r["total_cost_inr"],
+                    "grid_import_kwh": r["grid_import_kwh"],
+                    "outage_coverage_pct": r["outage"]["coverage_pct"],
+                }
+                for name, r in available.items()
+            },
         }
 
     return await asyncio.to_thread(_run)
