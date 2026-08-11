@@ -1,0 +1,56 @@
+# ============================================================
+# IEMS - Intelligent Energy Management Simulator
+# requirements.txt
+# Python 3.10+
+# ============================================================
+
+# --- Core Data & Scientific Computing ---
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.11.0
+scikit-learn>=1.3.0
+
+# --- Solar Simulation ---
+pvlib>=0.10.0          # PV system simulation (industry standard)
+requests>=2.31.0       # NASA POWER API calls
+ephem>=4.1.5           # Astronomical calculations for solar position
+
+# --- Reinforcement Learning ---
+gymnasium>=0.29.0                # Gym environment interface (Farama Foundation fork)
+stable-baselines3[extra]>=2.3.0 # DQN implementation
+torch>=2.1.0                     # PyTorch backend for SB3
+tensorboard>=2.14.0              # Training metrics & visualization
+
+# --- MPC Optimization ---
+cvxpy>=1.4.0           # Convex optimization for MPC
+
+# -- GA -- 
+
+# --- Dashboard ---
+streamlit>=1.28.0      # Main dashboard framework
+plotly>=5.17.0         # Interactive charts
+altair>=5.1.0          # Declarative charts (for Streamlit)
+streamlit-option-menu>=0.3.6
+
+# --- Report Generation ---
+reportlab>=4.0.0       # PDF report generation
+Pillow>=10.0.0         # Image handling for reports
+
+# --- Configuration & Environment ---
+pyyaml>=6.0.1          # YAML config parsing
+python-dotenv>=1.0.0   # .env file support
+
+# --- Development & Notebooks ---
+jupyter>=1.0.0
+ipykernel>=6.25.0
+matplotlib>=3.7.0
+seaborn>=0.13.0
+tqdm>=4.66.0           # Progress bars for training loops
+
+# --- Utilities ---
+click>=8.1.0           # CLI interface
+loguru>=0.7.0          # Better logging than stdlib logging
+
+# --- Testing ---
+pytest>=7.4.0
+pytest-cov>=4.1.0
