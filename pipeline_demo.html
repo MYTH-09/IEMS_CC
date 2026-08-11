@@ -663,20 +663,19 @@
 
         const STAGES = [
             { key: "synthetic_load", label: "Synthetic Load" },
-            { key: "solar_generation", label: "Solar Generation" },
+            // "Solar Generation" removed from the UI per request — the stage still
+            // runs in the background (grid_search/ga depend on it), it's just not
+            // shown as a tab.
             { key: "grid_search", label: "Grid Search" },
             { key: "ga", label: "GA (NSGA-II)" },
-            { key: "rule_based", label: "Rule-Based" },
-            { key: "mpc_normal", label: "MPC — Normal" },
-            { key: "mpc_weather", label: "MPC — Weather" },
-            { key: "dqn", label: "DQN" },
-            { key: "outage_proof", label: "Outage Protection Proof" },
+            { key: "rule_based_gs", label: "Rule-Based (Grid Search)" },
+            { key: "rule_based_ga", label: "Rule-Based (GA)" },
+            // MPC — Normal and MPC — Weather tabs removed — the corresponding
+            // backend stages are commented out too (see stage_functions.py), not
+            // just hidden here.
+            { key: "dqn", label: "DQN (GA)" },
+            { key: "outage_proof", label: "Final Report" },
         ];
-
-        const CONTROLLER_LABELS = {
-            rule_based: "Rule-Based", mpc_normal: "MPC (Persistence)",
-            mpc_weather: "MPC (Real Forecast)", dqn: "DQN",
-        };
 
         let currentJobId = null;
         let currentTab = "synthetic_load";
@@ -886,6 +885,7 @@
           <div>
             <p class="chart-sublabel">Seasonal shape — avg daily kWh by month</p>
             <canvas id="chart-synthetic_load_monthly" height="140"></canvas>
+            <p class="table-note" style="margin-top:2px">Y-axis zoomed (doesn't start at 0) to make month-to-month variation visible — see values on hover.</p>
           </div>
         </div>
       </div>`;
@@ -924,48 +924,34 @@
                     },
                 });
 
+                // Zoom the y-axis to the actual data range (with a little padding)
+                // instead of Chart.js's default bar-chart behavior of starting at 0
+                // — with values as close together as ~7.8-8.5 kWh/day, a 0-start
+                // axis makes every bar look identical. Clearly labeled above as a
+                // zoomed axis so this isn't visually misleading.
+                const monthVals = d.monthly.avg_daily_kwh;
+                const monthMin = Math.min(...monthVals), monthMax = Math.max(...monthVals);
+                const monthPad = Math.max((monthMax - monthMin) * 0.25, 0.3);
+                const yMin = Math.max(0, Math.floor((monthMin - monthPad) * 10) / 10);
+                const yMax = Math.ceil((monthMax + monthPad) * 10) / 10;
+
                 charts.synthetic_load_monthly = new Chart(document.getElementById("chart-synthetic_load_monthly"), {
                     type: "bar",
-                    data: { labels: d.monthly.months, datasets: [{ label: "kWh/day", data: d.monthly.avg_daily_kwh, backgroundColor: "#2F6E73", borderRadius: 4 }] },
-                    options: { plugins: { legend: { display: false } }, scales: { y: { grid: { color: "#EFEEE8" }, title: { display: true, text: "kWh/day" } }, x: { grid: { display: false } } } },
-                });
-            },
-
-            solar_generation(el, d) {
-                el.innerHTML = `
-      <div class="panel">
-        <p class="section-label">Monthly solar yield (3 kWp reference system) ${sourceBadge(d.source)}</p>
-        <canvas id="chart-solar_generation" height="90"></canvas>
-        <div class="stat-grid">
-          <div class="stat-card"><div class="label">Annual yield (3kWp)</div><div class="value">${d.annual_yield_kwh_3kwp.toLocaleString('en-IN')}<span class="u">kWh</span></div></div>
-          <div class="stat-card"><div class="label">Capacity factor</div><div class="value">${d.capacity_factor_pct}<span class="u">%</span></div></div>
-          <div class="stat-card"><div class="label">Peak sun hours</div><div class="value">${d.peak_sun_hours_per_day}<span class="u">hr/day</span></div></div>
-        </div>
-        <p class="chart-sublabel" style="margin-top:20px">Average daily generation shape (3kWp reference)</p>
-        <canvas id="chart-solar_generation_day" height="90"></canvas>
-      </div>`;
-                destroyChartsWithPrefix("solar_generation");
-                charts.solar_generation = new Chart(document.getElementById("chart-solar_generation"), {
-                    type: "bar",
-                    data: { labels: d.chart.months, datasets: [{ label: "kWh", data: d.chart.kwh, backgroundColor: "#E5A032", borderRadius: 4 }] },
-                    options: { plugins: { legend: { display: false } }, scales: { y: { grid: { color: "#EFEEE8" }, title: { display: true, text: "kWh" } }, x: { grid: { display: false } } } },
-                });
-                charts.solar_generation_day = new Chart(document.getElementById("chart-solar_generation_day"), {
-                    type: "line",
-                    data: {
-                        labels: d.day_shape.hour_labels, datasets: [{
-                            label: "Generation (kW)", data: d.day_shape.values_kw,
-                            borderColor: "#935F14", backgroundColor: "rgba(229,160,50,0.15)", fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2
-                        }]
-                    },
+                    data: { labels: d.monthly.months, datasets: [{ label: "kWh/day", data: monthVals, backgroundColor: "#2F6E73", borderRadius: 4 }] },
                     options: {
-                        plugins: { legend: { display: false } }, scales: {
-                            x: { grid: { display: false }, ticks: { font: { size: 10 }, maxTicksLimit: 8 } },
-                            y: { grid: { color: "#EFEEE8" }, title: { display: true, text: "kW" } }
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { min: yMin, max: yMax, grid: { color: "#EFEEE8" }, title: { display: true, text: "kWh/day" } },
+                            x: { grid: { display: false } }
                         }
                     },
                 });
             },
+
+
+            // "solar_generation" renderer removed — the tab is no longer shown in the
+            // UI (see STAGES above). The backend stage itself still runs since
+            // grid_search/ga depend on its output.
 
             grid_search(el, d) {
                 const cols = [
@@ -1102,66 +1088,93 @@
                 });
             },
 
-            rule_based(el, d) { renderControllerTab(el, d, "rule_based", "Rule-Based Control"); },
-            mpc_normal(el, d) { renderControllerTab(el, d, "mpc_normal", "MPC — Persistence Forecast"); },
-            mpc_weather(el, d) { renderControllerTab(el, d, "mpc_weather", "MPC — Real Streamed Forecast"); },
-            dqn(el, d) { renderControllerTab(el, d, "dqn", "DQN — Learned Control"); },
+            rule_based_gs(el, d) { renderControllerTab(el, d, "rule_based_gs", "Rule-Based — Grid Search Sizing"); },
+            rule_based_ga(el, d) { renderControllerTab(el, d, "rule_based_ga", "Rule-Based — GA Sizing"); },
+            // mpc_normal(el, d) { renderControllerTab(el, d, "mpc_normal", "MPC — Persistence Forecast"); },
+            // mpc_weather(el, d) { renderControllerTab(el, d, "mpc_weather", "MPC — Real Streamed Forecast"); },
+            dqn(el, d) { renderControllerTab(el, d, "dqn", "DQN — GA Sizing"); },
 
             outage_proof(el, d) {
-                const withBetter = d.with_solar.unmet_load_kwh < d.without_solar.unmet_load_kwh;
-                const names = Object.keys(d.all_controllers);
+                // "Final Report" tab. Backend key stays outage_proof (matches
+                // orchestrator/stage_functions), display name is "Final Report".
+                const b = d.baseline;
+                const combos = Object.keys(d.comparisons);   // insertion order: grid_search_rule_based, ga_rule_based, ga_dqn
+                const labels = ["No solar/battery", ...combos.map(k => d.comparisons[k].label)];
+
                 const cols = [
-                    { key: "_label", label: "Controller" },
-                    { key: "unmet_load_kwh", label: "Unmet (kWh)" },
-                    { key: "cost_inr", label: "Cost", fmt: fmtInr },
-                    { key: "grid_import_kwh", label: "Grid import (kWh)" },
-                    { key: "outage_coverage_pct", label: "Outage coverage %" },
+                    { key: "_label", label: "Combo" },
+                    { key: "panel_kw", label: "Panel (kW)" },
+                    { key: "battery_kwh", label: "Battery (kWh)" },
+                    { key: "annual_cost_inr", label: "Est. annual cost", fmt: fmtInr },
+                    { key: "annual_savings_vs_baseline_inr", label: "Est. annual savings", fmt: fmtInr },
+                    { key: "annual_unmet_load_kwh", label: "Unmet (kWh/yr)" },
+                    { key: "outage_hours_faced", label: "Outage hrs faced/yr" },
+                    { key: "outage_hours_total", label: "Outage hrs total/yr" },
+                    { key: "outage_coverage_pct", label: "Coverage %" },
                 ];
-                const tableRows = names.map(n => ({ _label: (n === d.best_controller ? "★ " : "") + (CONTROLLER_LABELS[n] || n), ...d.all_controllers[n] }));
+                const tableRows = [
+                    {
+                        _label: "No solar/battery", panel_kw: 0, battery_kwh: 0, annual_cost_inr: b.annual_cost_inr,
+                        annual_savings_vs_baseline_inr: 0, annual_unmet_load_kwh: b.annual_unmet_load_kwh,
+                        outage_hours_faced: b.outage_hours_faced, outage_hours_total: b.outage_hours_total, outage_coverage_pct: 0.0
+                    },
+                    ...combos.map(k => ({ _label: (k === d.best_combo ? "★ " : "") + d.comparisons[k].label, ...d.comparisons[k] })),
+                ];
+
+                const comboCards = combos.map(k => {
+                    const c = d.comparisons[k];
+                    const isBest = k === d.best_combo;
+                    return `
+      <div class="compare-card with"${isBest ? ' style="outline:2px solid var(--teal-deep)"' : ''}>
+        <div class="ct">${c.label}${isBest ? ' ★' : ''}</div>
+        <div class="cv">${c.outage_hours_faced}<span style="font-size:14px"> hrs/yr</span></div>
+        <div class="cl">outage hours still faced (of ${c.outage_hours_total} hrs/yr total)</div>
+        <div class="cl" style="margin-top:8px">System: ${c.panel_kw}kW / ${c.battery_kwh}kWh</div>
+        <div class="cl">Est. annual cost: ₹${c.annual_cost_inr.toLocaleString('en-IN')} (saves ₹${c.annual_savings_vs_baseline_inr.toLocaleString('en-IN')}/yr)</div>
+        <div class="cl">Outage coverage: ${c.outage_coverage_pct}%</div>
+      </div>`;
+                }).join("");
 
                 el.innerHTML = `
       <div class="panel">
-        <p class="section-label">Best-performing controller: <b>${(CONTROLLER_LABELS[d.best_controller] || d.best_controller)}</b></p>
-        <div class="compare-row">
+        <p class="section-label">Without solar/battery vs. three sizing+controller combinations</p>
+        <p class="table-note">All figures below are annualized estimates, extrapolated (× 365/${d.episode_days}) from one simulated ${d.episode_days}-day episode — not a full-year simulation. Use for relative comparison between combos, not as a precise annual bill forecast.</p>
+        <div class="compare-row" style="grid-template-columns: 1fr;">
           <div class="compare-card without">
             <div class="ct">WITHOUT SOLAR + BATTERY</div>
-            <div class="cv">${d.without_solar.unmet_load_kwh}<span style="font-size:14px"> kWh</span></div>
-            <div class="cl">unmet load during outages</div>
-            <div class="cl" style="margin-top:8px">Annual cost: ₹${d.without_solar.cost_inr.toLocaleString('en-IN')}</div>
-          </div>
-          <div class="compare-card with">
-            <div class="ct">WITH SOLAR + BATTERY (${(CONTROLLER_LABELS[d.best_controller] || d.best_controller)})</div>
-            <div class="cv">${d.with_solar.unmet_load_kwh}<span style="font-size:14px"> kWh</span></div>
-            <div class="cl">unmet load during outages</div>
-            <div class="cl" style="margin-top:8px">Annual cost: ₹${d.with_solar.cost_inr.toLocaleString('en-IN')}</div>
-            ${withBetter ? '<div class="winner-tag">✓ Outage protection proven</div>' : ''}
+            <div class="cv">${b.outage_hours_faced}<span style="font-size:14px"> hrs/yr</span></div>
+            <div class="cl">outage hours faced — 100% grid-dependent, so this equals total outage exposure (${b.outage_hours_total} hrs/yr)</div>
+            <div class="cl" style="margin-top:8px">Est. annual cost: ₹${b.annual_cost_inr.toLocaleString('en-IN')}</div>
+            <div class="cl">Est. annual unmet load: ${b.annual_unmet_load_kwh} kWh</div>
           </div>
         </div>
-        <p class="chart-sublabel" style="margin-top:20px">All four controllers, same hardware — unmet load vs cost</p>
+        <div class="rec-grid" style="margin-top:16px">${comboCards}</div>
+        <p class="chart-sublabel" style="margin-top:20px">All combinations — outage hours faced vs annual cost</p>
         <canvas id="chart-outage_proof" height="100"></canvas>
         ${dataTable(tableRows, cols)}
-        <p class="table-note">★ = lowest unmet load among controllers that completed successfully. A controller can be missing here if it failed or was blocked (e.g. DQN with no trained policy file).</p>
+        <p class="table-note">★ = lowest annualized unmet load among combos that completed successfully. A combo can be missing here if its controller stage failed or was blocked (e.g. DQN with no trained policy file).</p>
       </div>`;
                 destroyChartsWithPrefix("outage_proof");
                 charts.outage_proof = new Chart(document.getElementById("chart-outage_proof"), {
                     data: {
-                        labels: names.map(n => CONTROLLER_LABELS[n] || n),
+                        labels: labels,
                         datasets: [
-                            { type: "bar", label: "Unmet load (kWh)", data: names.map(n => d.all_controllers[n].unmet_load_kwh), backgroundColor: "rgba(181,83,60,0.55)", borderColor: "#7A3626", yAxisID: "y" },
-                            { type: "line", label: "Cost (₹)", data: names.map(n => d.all_controllers[n].cost_inr), borderColor: "#1B4448", backgroundColor: "#1B4448", yAxisID: "y1", tension: 0.2 },
+                            { type: "bar", label: "Outage hours faced/yr", data: [b.outage_hours_faced, ...combos.map(k => d.comparisons[k].outage_hours_faced)], backgroundColor: "rgba(181,83,60,0.55)", borderColor: "#7A3626", yAxisID: "y" },
+                            { type: "line", label: "Est. annual cost (₹)", data: [b.annual_cost_inr, ...combos.map(k => d.comparisons[k].annual_cost_inr)], borderColor: "#1B4448", backgroundColor: "#1B4448", yAxisID: "y1", tension: 0.2 },
                         ]
                     },
                     options: {
                         plugins: { legend: { display: true, labels: { boxWidth: 12, font: { size: 11 } } } },
                         scales: {
                             x: { grid: { display: false } },
-                            y: { position: "left", title: { display: true, text: "Unmet load (kWh)" }, grid: { color: "#EFEEE8" } },
-                            y1: { position: "right", title: { display: true, text: "Annual cost (₹)" }, grid: { display: false } },
+                            y: { position: "left", title: { display: true, text: "Outage hours faced / yr" }, grid: { color: "#EFEEE8" } },
+                            y1: { position: "right", title: { display: true, text: "Est. annual cost (₹)" }, grid: { display: false } },
                         }
                     },
                 });
             },
         };
+
 
         function renderControllerTab(el, d, key, title) {
             const b = d.cost_breakdown, o = d.outage;

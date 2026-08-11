@@ -53,23 +53,30 @@ STAGE_DEPENDENCIES: dict[str, object] = {
     "solar_generation": [],
     "grid_search":      ["synthetic_load", "solar_generation"],
     "ga":               ["synthetic_load", "solar_generation"],
-    # Controller stages only need ONE of {grid_search, ga} to have actually
-    # produced a recommendation — GA is the preferred, more thorough source,
-    # but grid_search is the fallback. Requiring BOTH to succeed (a plain
-    # AND-list) would wrongly block every controller and the outage-proof
-    # tab whenever GA alone fails for any reason (missing pymoo, a solver
-    # hiccup, timeout) — a real bug caught during testing, not a
-    # hypothetical: this exact scenario reproduced it directly.
-    "rule_based":        {"any_of": ["grid_search", "ga"]},
-    "mpc_normal":        {"any_of": ["grid_search", "ga"]},
-    "mpc_weather":       {"any_of": ["grid_search", "ga"]},
-    "dqn":               {"any_of": ["grid_search", "ga"]},
-    # outage_proof needs at least one controller's result to compare
-    # against "no solar" — not necessarily all four (e.g. DQN legitimately
-    # has no trained model on a fresh machine and will fail; the demo
-    # should still show the proof using whichever controllers succeeded).
-    "outage_proof":     {"any_of": ["rule_based", "mpc_normal", "mpc_weather", "dqn"]},
+    # Each controller tab now has an EXPLICIT, single sizing source (no
+    # any_of/fallback) — this is a deliberate change from the earlier
+    # design. The three controller tabs the demo shows are specifically
+    # "Grid Search + Rule-Based", "GA + Rule-Based", and "GA + DQN", so
+    # each depends on exactly the one sizing stage it's supposed to use.
+    # If that sizing stage fails, the controller tab correctly shows
+    # "blocked" rather than silently falling back to the other sizer.
+    "rule_based_gs":     ["grid_search"],
+    "rule_based_ga":     ["ga"],
+    "dqn":               ["ga"],
+    # MPC — Normal and MPC — Weather stages are commented out (see
+    # stage_functions.py) rather than deleted — not run by the pipeline
+    # right now, so no dependency entries for them either.
+    # "mpc_normal":      {"any_of": ["grid_search", "ga"]},
+    # "mpc_weather":     {"any_of": ["grid_search", "ga"]},
+    #
+    # outage_proof (displayed as "Final Report" in the UI) needs at least
+    # one of the three controller comparisons to exist — not necessarily
+    # all three (e.g. DQN legitimately has no trained model on a fresh
+    # machine and will fail; the report should still show whichever
+    # combos succeeded).
+    "outage_proof":     {"any_of": ["rule_based_gs", "rule_based_ga", "dqn"]},
 }
+
 
 VALID_STATUSES = {"pending", "running", "done", "failed", "blocked"}
 

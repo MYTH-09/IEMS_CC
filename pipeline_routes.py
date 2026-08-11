@@ -2,8 +2,13 @@
 IEMS – Pipeline Demo API Routes
 ===================================
 Exposes src/pipeline/orchestrator.py as HTTP endpoints for the tabbed
-demo frontend (9 stages: synthetic_load, solar_generation, grid_search,
-ga, rule_based, mpc_normal, mpc_weather, dqn, outage_proof).
+demo frontend (7 tabs shown in the UI: synthetic_load, grid_search, ga,
+rule_based_gs, rule_based_ga, dqn, outage_proof — the last displayed as
+"Final Report". solar_generation still runs as a backend stage since
+grid_search/ga depend on it, but isn't shown as its own tab. mpc_normal
+and mpc_weather stages are commented out in stage_functions.py and are
+not run at all — see the notes there and in orchestrator.py's
+STAGE_DEPENDENCIES for how to re-enable them).
 
 Designed to be ADDITIVE to the existing app.py — does not replace or
 modify the existing /api/size endpoint or anything else already there.

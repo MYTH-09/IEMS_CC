@@ -401,8 +401,11 @@ async def stage_ga(params: dict, get_upstream: Callable) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _pick_recommended_system(get_upstream: Callable) -> dict:
-    """GA's recommendation takes priority (more thorough search); falls
-    back to grid search's if GA failed/was blocked."""
+    """Kept for reference — this GA-preferred/grid-search-fallback picker is
+    no longer used by the active controller stages below (each now has an
+    explicit, single sizing source instead of a fallback preference), but
+    is left in place since the commented-out MPC stages further down still
+    reference it, so they stay easy to re-enable if needed."""
     ga = get_upstream("ga")
     if ga is not None:
         return ga["recommended"]
@@ -535,9 +538,11 @@ def _run_controller_demo(load, solar, params, controller, panel_kw, battery_kwh)
     }
 
 
-async def stage_rule_based(params: dict, get_upstream: Callable) -> dict:
+async def stage_rule_based_gs(params: dict, get_upstream: Callable) -> dict:
+    """Rule-Based controller, sized using GRID SEARCH's best-outage-protection
+    recommendation. One of the three combos the Final Report tab compares."""
     load, solar = get_upstream("synthetic_load"), get_upstream("solar_generation")
-    rec = _pick_recommended_system(get_upstream)
+    rec = get_upstream("grid_search")["recommended"]
 
     def _run():
         return _run_controller_demo(load, solar, params, RuleBasedController(),
@@ -545,30 +550,53 @@ async def stage_rule_based(params: dict, get_upstream: Callable) -> dict:
     return await asyncio.to_thread(_run)
 
 
-async def stage_mpc_normal(params: dict, get_upstream: Callable) -> dict:
+async def stage_rule_based_ga(params: dict, get_upstream: Callable) -> dict:
+    """Rule-Based controller, sized using GA (NSGA-II)'s best-outage-protection
+    recommendation. One of the three combos the Final Report tab compares."""
     load, solar = get_upstream("synthetic_load"), get_upstream("solar_generation")
-    rec = _pick_recommended_system(get_upstream)
+    rec = get_upstream("ga")["recommended"]
 
     def _run():
-        return _run_controller_demo(load, solar, params, MPCController(horizon_hours=24.0),
+        return _run_controller_demo(load, solar, params, RuleBasedController(),
                                       rec["panel_kw"], rec["battery_kwh"])
     return await asyncio.to_thread(_run)
 
 
-async def stage_mpc_weather(params: dict, get_upstream: Callable) -> dict:
-    load, solar = get_upstream("synthetic_load"), get_upstream("solar_generation")
-    rec = _pick_recommended_system(get_upstream)
+# ─────────────────────────────────────────────────────────────────────────────
+# MPC — Normal and MPC — Weather stages: COMMENTED OUT, not deleted.
+# Not run by the pipeline right now (removed from STAGE_FUNCTIONS below and
+# from orchestrator.py's STAGE_DEPENDENCIES) — kept here, and the
+# HistoricalForecastProvider import above stays in place too, so both are
+# easy to restore later if MPC comparisons are wanted again.
+# ─────────────────────────────────────────────────────────────────────────────
 
-    def _run():
-        provider = HistoricalForecastProvider() if HistoricalForecastProvider else None
-        return _run_controller_demo(load, solar, params, MPCController(horizon_hours=24.0, forecast_provider=provider),
-                                      rec["panel_kw"], rec["battery_kwh"])
-    return await asyncio.to_thread(_run)
+# async def stage_mpc_normal(params: dict, get_upstream: Callable) -> dict:
+#     load, solar = get_upstream("synthetic_load"), get_upstream("solar_generation")
+#     rec = _pick_recommended_system(get_upstream)
+#
+#     def _run():
+#         return _run_controller_demo(load, solar, params, MPCController(horizon_hours=24.0),
+#                                       rec["panel_kw"], rec["battery_kwh"])
+#     return await asyncio.to_thread(_run)
+#
+#
+# async def stage_mpc_weather(params: dict, get_upstream: Callable) -> dict:
+#     load, solar = get_upstream("synthetic_load"), get_upstream("solar_generation")
+#     rec = _pick_recommended_system(get_upstream)
+#
+#     def _run():
+#         provider = HistoricalForecastProvider() if HistoricalForecastProvider else None
+#         return _run_controller_demo(load, solar, params, MPCController(horizon_hours=24.0, forecast_provider=provider),
+#                                       rec["panel_kw"], rec["battery_kwh"])
+#     return await asyncio.to_thread(_run)
 
 
 async def stage_dqn(params: dict, get_upstream: Callable) -> dict:
+    """DQN controller, sized using GA's best-outage-protection recommendation
+    specifically (not grid search) — the Final Report tab's third combo is
+    "GA + DQN", so DQN is deliberately evaluated on GA-sized hardware only."""
     load, solar = get_upstream("synthetic_load"), get_upstream("solar_generation")
-    rec = _pick_recommended_system(get_upstream)
+    rec = get_upstream("ga")["recommended"]
 
     def _run():
         model_path = "models/dqn_policy.zip"
@@ -580,37 +608,50 @@ async def stage_dqn(params: dict, get_upstream: Callable) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Stage 9 — Outage Protection Proof
+# Stage 7 — Final Report
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def stage_outage_proof(params: dict, get_upstream: Callable) -> dict:
+    """
+    "Final Report" tab. Compares the no-solar/no-battery baseline against
+    the three specific combos the pipeline now runs:
+        Grid Search + Rule-Based   (rule_based_gs)
+        GA + Rule-Based            (rule_based_ga)
+        GA + DQN                   (dqn)
+
+    All figures are ANNUALIZED (scaled by 365 / _DEMO_EPISODE_DAYS) rather
+    than left as raw 30-day totals — the earlier version of this tab
+    labeled a 30-day cost "Annual cost", which was a real mislabeling
+    inherited from the original file. The scaling here mirrors the same
+    365/episode_days approach validate_candidates.py already uses for its
+    own annualized comparisons, and every figure this produces is clearly
+    an estimate extrapolated from one 30-day simulated episode, not a
+    true full-year simulation — the frontend note says so explicitly.
+    """
     load, solar = get_upstream("synthetic_load"), get_upstream("solar_generation")
 
     def _run():
-        controller_results = {
-            "rule_based": get_upstream("rule_based"), "mpc_normal": get_upstream("mpc_normal"),
-            "mpc_weather": get_upstream("mpc_weather"), "dqn": get_upstream("dqn"),
-        }
-        # Filter out any controller that failed (get_upstream returns None
-        # for a stage that never completed successfully — e.g. DQN with no
-        # trained model file). This is not an edge case: outage_proof's
-        # any_of dependency is SPECIFICALLY designed to still run when only
-        # some controllers succeeded (see STAGE_DEPENDENCIES's comment) —
-        # skipping this filter crashes with 'NoneType' object is not
-        # subscriptable the moment that documented fallback actually fires,
-        # which it did in real testing (DQN failing on a fresh machine).
-        available = {name: r for name, r in controller_results.items() if r is not None}
+        combos = [
+            ("grid_search_rule_based", "Grid Search + Rule-Based", get_upstream("rule_based_gs")),
+            ("ga_rule_based", "GA + Rule-Based", get_upstream("rule_based_ga")),
+            ("ga_dqn", "GA + DQN", get_upstream("dqn")),
+        ]
+        # Filter out any combo whose controller stage failed/was blocked
+        # (e.g. DQN with no trained model file on a fresh machine) — the
+        # any_of dependency on this stage is specifically designed to still
+        # produce a report using whichever combos succeeded.
+        available = [(key, label, r) for key, label, r in combos if r is not None]
         if not available:
             raise RuntimeError(
-                "outage_proof: no controller results available — "
-                "rule_based, mpc_normal, mpc_weather, and dqn all failed or were blocked."
+                "Final report: none of the three combos completed — "
+                "rule_based_gs, rule_based_ga, and dqn all failed or were blocked."
             )
 
-        # Pick whichever AVAILABLE controller achieved the lowest unmet load
-        best_name, best = min(available.items(), key=lambda kv: kv[1]["unmet_load_kwh"])
+        annualize = 365.0 / _DEMO_EPISODE_DAYS
 
-        # "Without solar" baseline: panel=0, battery=0, rule-based (no controller choice
-        # matters when there's no battery/solar — the household is 100% grid-dependent)
+        # "Without solar/battery" baseline — 100% grid-dependent, so every
+        # outage timestep is, by definition, fully unmet. Counted directly
+        # here (not assumed) so the number is measured, not inferred.
         grid = _build_grid(params["city"])
         n = min(len(load["load_kw"]), len(solar["solar_kw_per_kwp"]))
         no_solar_env = EnergyEnv(
@@ -621,28 +662,46 @@ async def stage_outage_proof(params: dict, get_upstream: Callable) -> dict:
             grid=grid, episode_days=_DEMO_EPISODE_DAYS, seed=42,
         )
         obs, info = no_solar_env.reset(seed=42)
-        rb = RuleBasedController(); rb.reset()
+        outage_steps_total = 0
+        unmet_steps = 0
         terminated = truncated = False
         while not (terminated or truncated):
+            idx_before = no_solar_env._data_idx
+            was_outage = no_solar_env.grid.is_outage(no_solar_env.timestamps[idx_before])
             obs, reward, terminated, truncated, info = no_solar_env.step(0)
+            if was_outage:
+                outage_steps_total += 1
+                if info["unmet_load_kwh"] > 0:
+                    unmet_steps += 1
+
+        baseline = {
+            "annual_cost_inr": round(info["episode_cost_inr"] * annualize),
+            "annual_unmet_load_kwh": round(info["episode_unmet_load_kwh"] * annualize, 1),
+            "outage_hours_total": round(outage_steps_total * 0.25 * annualize, 1),
+            "outage_hours_faced": round(unmet_steps * 0.25 * annualize, 1),
+        }
+
+        comparisons = {}
+        for key, label, r in available:
+            comparisons[key] = {
+                "label": label,
+                "panel_kw": r["panel_kw"], "battery_kwh": r["battery_kwh"],
+                "annual_cost_inr": round(r["total_cost_inr"] * annualize),
+                "annual_unmet_load_kwh": round(r["unmet_load_kwh"] * annualize, 1),
+                "annual_grid_import_kwh": round(r["grid_import_kwh"] * annualize, 1),
+                "outage_hours_total": round(r["outage"]["steps_total"] * 0.25 * annualize, 1),
+                "outage_hours_faced": round(r["outage"]["steps_unmet"] * 0.25 * annualize, 1),
+                "outage_coverage_pct": r["outage"]["coverage_pct"],
+                "annual_savings_vs_baseline_inr": round(baseline["annual_cost_inr"] - r["total_cost_inr"] * annualize),
+            }
+
+        best_key = min(comparisons, key=lambda k: comparisons[k]["annual_unmet_load_kwh"])
 
         return {
-            "best_controller": best_name,
-            "with_solar": {"unmet_load_kwh": best["unmet_load_kwh"], "cost_inr": best["total_cost_inr"]},
-            "without_solar": {"unmet_load_kwh": round(info["episode_unmet_load_kwh"], 1),
-                               "cost_inr": round(info["episode_cost_inr"], 2)},
-            # All controllers side by side — previously only the winner survived
-            # into the tab and the other three (already fully simulated by this
-            # point) were discarded.
-            "all_controllers": {
-                name: {
-                    "unmet_load_kwh": r["unmet_load_kwh"],
-                    "cost_inr": r["total_cost_inr"],
-                    "grid_import_kwh": r["grid_import_kwh"],
-                    "outage_coverage_pct": r["outage"]["coverage_pct"],
-                }
-                for name, r in available.items()
-            },
+            "baseline": baseline,
+            "comparisons": comparisons,
+            "best_combo": best_key,
+            "episode_days": _DEMO_EPISODE_DAYS,
         }
 
     return await asyncio.to_thread(_run)
@@ -653,9 +712,10 @@ STAGE_FUNCTIONS = {
     "solar_generation": stage_solar_generation,
     "grid_search": stage_grid_search,
     "ga": stage_ga,
-    "rule_based": stage_rule_based,
-    "mpc_normal": stage_mpc_normal,
-    "mpc_weather": stage_mpc_weather,
+    "rule_based_gs": stage_rule_based_gs,
+    "rule_based_ga": stage_rule_based_ga,
+    # "mpc_normal": stage_mpc_normal,      # commented out — see the note above stage_dqn
+    # "mpc_weather": stage_mpc_weather,    # commented out — see the note above stage_dqn
     "dqn": stage_dqn,
-    "outage_proof": stage_outage_proof,
+    "outage_proof": stage_outage_proof,   # displayed as "Final Report" in the UI
 }
