@@ -230,3 +230,44 @@ def load_cached(location_name: str, cache_dir: str = "data/solar") -> pd.DataFra
         logger.warning(f"load_cached({location_name}): dropped {before - len(df)} duplicate timestamp rows")
 
     return df.sort_values("timestamp").reset_index(drop=True)
+
+
+def fetch_city_solar_data(
+    city_name: str,
+    start_date: str = "2020-01-01",
+    end_date: str = "2021-12-31",
+    cache_dir: str = "data/solar",
+) -> pd.DataFrame:
+    """
+    Fetch NASA POWER solar irradiance data for any supported Indian city.
+    Automatically resolves coordinates and altitude from src.solar.locations.
+
+    Parameters
+    ----------
+    city_name  : Name or alias of the city (e.g. "Bengaluru", "Bangalore", "Chennai", "Mysore").
+    start_date : Start date (YYYY-MM-DD).
+    end_date   : End date (YYYY-MM-DD).
+    cache_dir  : Directory where parquet files are saved/read.
+
+    Returns
+    -------
+    pd.DataFrame
+        Hourly weather data in IST.
+    """
+    from src.solar.locations import get_city
+
+    city = get_city(city_name)
+    if city is None:
+        raise ValueError(
+            f"City '{city_name}' not found in locations registry. "
+            f"Please check spelling or choose a supported Indian city."
+        )
+
+    return fetch_solar_data(
+        lat=city.lat,
+        lon=city.lon,
+        start_date=start_date,
+        end_date=end_date,
+        location_name=city.name,
+        cache_dir=cache_dir,
+    )

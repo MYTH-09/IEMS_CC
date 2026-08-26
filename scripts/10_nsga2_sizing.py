@@ -179,27 +179,29 @@ def main() -> None:
     logger.info("━" * 60)
 
     if args.real_solar:
-        city_coords = {
-            "Mathura":  dict(lat=27.4924, lon=77.6737, altitude_m=182.0),
-            "Bareilly": dict(lat=28.3670, lon=79.4304, altitude_m=172.0),
-        }
-        if args.city not in city_coords:
-            logger.error(f"Unknown city '{args.city}'. Choose from: {list(city_coords.keys())}")
+        from src.solar.locations import get_city
+        from src.solar.pv_model import get_or_generate_solar_15min
+
+        city_info = get_city(args.city)
+        if city_info is None:
+            logger.error(f"Unknown city '{args.city}'. Please choose a valid Indian city (e.g. Bengaluru, Chennai, Hyderabad, Mysuru, Mathura, Bareilly).")
             sys.exit(1)
-        coords = city_coords[args.city]
+
+        city_name = city_info.name
+        coords = dict(lat=city_info.lat, lon=city_info.lon, altitude_m=city_info.altitude_m)
+
+        # Ensure weather data exists by fetching/generating if not cached
+        get_or_generate_solar_15min(city_name)
 
         # Load the weather cache FIRST so the household's timestamps can be
-        # built on the SAME calendar range. Building them independently
-        # (e.g. an arbitrary "2025-01-01" start) and force-aligning later
-        # via nearest-neighbor reindex is what caused the real bug fixed
-        # here — see build_test_household()'s docstring for the full story.
+        # built on the SAME calendar range.
         from src.solar.nasa_power import load_cached
-        weather_hourly = load_cached(args.city, cache_dir="data/solar")
+        weather_hourly = load_cached(city_name, cache_dir="data/solar")
         weather_start = weather_hourly["timestamp"].min()
         weather_end = weather_hourly["timestamp"].max()
         weather_span_days = (weather_end - weather_start).days
         logger.info(
-            f"Cached weather for {args.city} spans {weather_start.date()} → "
+            f"Cached weather for {city_name} spans {weather_start.date()} → "
             f"{weather_end.date()} ({weather_span_days} days)"
         )
 

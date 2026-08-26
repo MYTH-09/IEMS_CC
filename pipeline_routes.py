@@ -85,9 +85,13 @@ def _build_financial_config(subsidy_eligible: bool) -> dict:
 
 @router.post("/start")
 async def start_pipeline(req: PipelineStartRequest) -> dict:
+    from src.solar.locations import get_city
+    city_info = get_city(req.city)
+    city_name = city_info.name if city_info is not None else req.city
+
     params = {
         "monthly_bill_inr": req.monthly_bill_inr,
-        "city": req.city,
+        "city": city_name,
         "financial_config": _build_financial_config(req.subsidy_eligible),
         "n_workers": req.n_workers,
         "ga_pop_size": req.ga_pop_size,

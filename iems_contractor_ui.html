@@ -778,9 +778,66 @@
                     <div class="step-title">Location</div>
                 </div>
                 <span class="field-label">City</span>
-                <select>
-                    <option>Mathura, Uttar Pradesh</option>
-                    <option>Bareilly, Uttar Pradesh</option>
+                <select id="city-select">
+                    <optgroup label="South India">
+                        <option value="Bengaluru, Karnataka">Bengaluru, Karnataka</option>
+                        <option value="Chennai, Tamil Nadu">Chennai, Tamil Nadu</option>
+                        <option value="Hyderabad, Telangana">Hyderabad, Telangana</option>
+                        <option value="Mysuru, Karnataka">Mysuru, Karnataka</option>
+                        <option value="Kochi, Kerala">Kochi, Kerala</option>
+                        <option value="Thiruvananthapuram, Kerala">Thiruvananthapuram, Kerala</option>
+                        <option value="Visakhapatnam, Andhra Pradesh">Visakhapatnam, Andhra Pradesh</option>
+                        <option value="Coimbatore, Tamil Nadu">Coimbatore, Tamil Nadu</option>
+                        <option value="Madurai, Tamil Nadu">Madurai, Tamil Nadu</option>
+                        <option value="Vijayawada, Andhra Pradesh">Vijayawada, Andhra Pradesh</option>
+                        <option value="Mangaluru, Karnataka">Mangaluru, Karnataka</option>
+                        <option value="Hubballi, Karnataka">Hubballi, Karnataka</option>
+                        <option value="Kozhikode, Kerala">Kozhikode, Kerala</option>
+                    </optgroup>
+                    <optgroup label="North India">
+                        <option value="Delhi, Delhi (NCR)">Delhi, Delhi (NCR)</option>
+                        <option value="Mathura, Uttar Pradesh" selected>Mathura, Uttar Pradesh</option>
+                        <option value="Bareilly, Uttar Pradesh">Bareilly, Uttar Pradesh</option>
+                        <option value="Lucknow, Uttar Pradesh">Lucknow, Uttar Pradesh</option>
+                        <option value="Kanpur, Uttar Pradesh">Kanpur, Uttar Pradesh</option>
+                        <option value="Varanasi, Uttar Pradesh">Varanasi, Uttar Pradesh</option>
+                        <option value="Agra, Uttar Pradesh">Agra, Uttar Pradesh</option>
+                        <option value="Noida, Uttar Pradesh">Noida, Uttar Pradesh</option>
+                        <option value="Gurugram, Haryana">Gurugram, Haryana</option>
+                        <option value="Chandigarh, Chandigarh (UT)">Chandigarh, Chandigarh (UT)</option>
+                        <option value="Jaipur, Rajasthan">Jaipur, Rajasthan</option>
+                        <option value="Jodhpur, Rajasthan">Jodhpur, Rajasthan</option>
+                        <option value="Udaipur, Rajasthan">Udaipur, Rajasthan</option>
+                        <option value="Amritsar, Punjab">Amritsar, Punjab</option>
+                        <option value="Ludhiana, Punjab">Ludhiana, Punjab</option>
+                        <option value="Dehradun, Uttarakhand">Dehradun, Uttarakhand</option>
+                        <option value="Prayagraj, Uttar Pradesh">Prayagraj, Uttar Pradesh</option>
+                        <option value="Srinagar, Jammu & Kashmir">Srinagar, Jammu & Kashmir</option>
+                    </optgroup>
+                    <optgroup label="West India">
+                        <option value="Mumbai, Maharashtra">Mumbai, Maharashtra</option>
+                        <option value="Pune, Maharashtra">Pune, Maharashtra</option>
+                        <option value="Ahmedabad, Gujarat">Ahmedabad, Gujarat</option>
+                        <option value="Surat, Gujarat">Surat, Gujarat</option>
+                        <option value="Vadodara, Gujarat">Vadodara, Gujarat</option>
+                        <option value="Nagpur, Maharashtra">Nagpur, Maharashtra</option>
+                        <option value="Nashik, Maharashtra">Nashik, Maharashtra</option>
+                        <option value="Rajkot, Gujarat">Rajkot, Gujarat</option>
+                        <option value="Panaji, Goa">Panaji, Goa</option>
+                        <option value="Chhatrapati Sambhajinagar, Maharashtra">Chhatrapati Sambhajinagar, Maharashtra</option>
+                    </optgroup>
+                    <optgroup label="East & Central India">
+                        <option value="Kolkata, West Bengal">Kolkata, West Bengal</option>
+                        <option value="Bhopal, Madhya Pradesh">Bhopal, Madhya Pradesh</option>
+                        <option value="Indore, Madhya Pradesh">Indore, Madhya Pradesh</option>
+                        <option value="Patna, Bihar">Patna, Bihar</option>
+                        <option value="Bhubaneswar, Odisha">Bhubaneswar, Odisha</option>
+                        <option value="Ranchi, Jharkhand">Ranchi, Jharkhand</option>
+                        <option value="Guwahati, Assam">Guwahati, Assam</option>
+                        <option value="Raipur, Chhattisgarh">Raipur, Chhattisgarh</option>
+                        <option value="Gwalior, Madhya Pradesh">Gwalior, Madhya Pradesh</option>
+                        <option value="Jabalpur, Madhya Pradesh">Jabalpur, Madhya Pradesh</option>
+                    </optgroup>
                 </select>
             </div>
 
@@ -1093,6 +1150,8 @@
                 status.textContent = '⚠ Could not reach the sizing backend — showing demo data instead.';
                 usingDemoData = true;
             } finally {
+                const badge = document.querySelector('.report-badge');
+                if (badge && citySelect) badge.textContent = citySelect.value;
                 btn.disabled = false;
                 btn.textContent = 'Run sizing simulation →';
                 showView('report');

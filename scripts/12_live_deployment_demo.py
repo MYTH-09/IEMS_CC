@@ -171,7 +171,7 @@ def run_streaming_year(load_kw, solar_kw, timestamps, grid, controller, panel_kw
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--city", default="Mathura", choices=["Mathura", "Bareilly"])
+    parser.add_argument("--city", default="Mathura", help="City name (e.g. Bengaluru, Chennai, Hyderabad, Mysuru, Mathura, Bareilly)")
     parser.add_argument("--bill", type=float, default=2400.0)
     parser.add_argument("--panel-kw", type=float, default=4.0)
     parser.add_argument("--battery-kwh", type=float, default=10.0)

@@ -198,13 +198,16 @@ app.add_middleware(
 from pipeline_routes import router as pipeline_router
 app.include_router(pipeline_router)
 
+from src.solar.locations import get_city, list_cities, get_all_city_coords_dict
+from src.solar.pv_model import load_solar_data, DEFAULT_SYSTEM, get_or_generate_solar_15min, is_city_solar_cached
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Request / response schemas
 # ─────────────────────────────────────────────────────────────────────────────
 
 class SizingRequest(BaseModel):
     monthly_bill_inr: float
-    city: Literal["Mathura", "Bareilly"]
+    city: str = "Mathura"               # Supports any major Indian city name or alias (e.g. Bengaluru, Chennai, Hyderabad, Mysuru, Mumbai, Delhi, etc.)
     budget_cap_inr: Optional[float] = None
     subsidy_eligible: bool = True
     depth: Literal["quick", "thorough"] = "quick"
@@ -213,10 +216,7 @@ class SizingRequest(BaseModel):
     validate_candidates_flag: bool = True   # run the real rule-based/MPC/DQN spot-check (§8.4/validate_candidates.py)
 
 
-CITY_COORDS = {
-    "Mathura":  dict(lat=27.4924, lon=77.6737, altitude_m=182.0),
-    "Bareilly": dict(lat=28.3670, lon=79.4304, altitude_m=172.0),
-}
+CITY_COORDS = get_all_city_coords_dict()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -226,17 +226,25 @@ CITY_COORDS = {
 def build_household_and_solar(city: str, monthly_bill_inr: float, avg_rate: float):
     """
     Build a synthetic household load (Module 1) aligned to the SAME
-    calendar dates as the city's cached solar output (Module 2a) — see
-    scripts/10_nsga2_sizing.py's build_test_household() docstring for why
-    date alignment matters here (a real bug we hit and fixed earlier).
+    calendar dates as the city's cached solar output (Module 2a).
+    Automatically fetches and generates 15-minute solar data for any
+    supported Indian city if not already cached.
     """
-    solar_path = f"data/solar/{city}_solar_15min.parquet"
-    if not os.path.exists(solar_path):
-        raise HTTPException(
-            status_code=400,
-            detail=f"No cached solar data for {city}. Run scripts/02_solar_pipeline.py first.",
-        )
-    solar_df = load_solar_data(solar_path)
+    city_info = get_city(city)
+    canonical_city = city_info.name if city_info is not None else city
+
+    try:
+        solar_df = get_or_generate_solar_15min(canonical_city)
+    except Exception as exc:
+        solar_path = f"data/solar/{canonical_city}_solar_15min.parquet"
+        if os.path.exists(solar_path):
+            solar_df = load_solar_data(solar_path)
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not load or fetch solar data for city '{city}' ({exc}).",
+            )
+
     solar_kw_per_kwp = (solar_df["solar_power_kw"] / DEFAULT_SYSTEM["capacity_kw"]).to_numpy(dtype=np.float32)
     timestamps = pd.DatetimeIndex(solar_df["timestamp"])
 
@@ -326,8 +334,11 @@ def row_to_candidate_json(row: pd.Series, financial_config: dict, total_outage_l
 
 @app.post("/api/size")
 def size_system(req: SizingRequest) -> dict:
-    coords = CITY_COORDS[req.city]
-    outage_params = derive_outage_params_from_real_data(req.city)
+    city_info = get_city(req.city)
+    city_name = city_info.name if city_info is not None else req.city
+
+    coords = CITY_COORDS.get(city_name, {"lat": 27.4924, "lon": 77.6737, "altitude_m": 182.0})
+    outage_params = derive_outage_params_from_real_data(city_name)
     grid = GridModel(
         fallback_outage_hours_per_day=outage_params["fallback_outage_hours_per_day"],
         outage_peak_hours=outage_params["outage_peak_hours"],
@@ -335,7 +346,7 @@ def size_system(req: SizingRequest) -> dict:
     financial_config = build_financial_config(req.subsidy_eligible)
 
     load_kw, solar_kw_per_kwp, timestamps = build_household_and_solar(
-        req.city, req.monthly_bill_inr, req.avg_rate_inr_per_kwh,
+        city_name, req.monthly_bill_inr, req.avg_rate_inr_per_kwh,
     )
     solar_curve = FixedSolarCurve(solar_kw_per_kwp)
 
@@ -459,6 +470,43 @@ def size_system(req: SizingRequest) -> dict:
     return result
 
 
+@app.get("/")
+def root():
+    return {
+        "message": "IEMS Sizing API",
+        "health": "/api/health",
+        "docs": "/docs",
+        "size": "/api/size",
+    }
+
+
+@app.get("/api/cities")
+def get_cities_list():
+    """Return all supported Indian cities with their coordinates and cached status."""
+    cities = list_cities()
+    return {
+        "count": len(cities),
+        "cities": [
+            {
+                "name": c.name,
+                "state": c.state,
+                "display_name": c.display_name,
+                "lat": c.lat,
+                "lon": c.lon,
+                "altitude_m": c.altitude_m,
+                "optimal_tilt": c.optimal_tilt,
+                "is_cached": is_city_solar_cached(c.name),
+            }
+            for c in cities
+        ],
+    }
+
+
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/favicon.ico")
+def favicon():
+    return {"status": "no_favicon"}

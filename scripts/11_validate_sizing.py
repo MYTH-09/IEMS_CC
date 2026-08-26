@@ -39,7 +39,7 @@ _spec.loader.exec_module(_nsga2_script)
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--city", default="Mathura", choices=["Mathura", "Bareilly"])
+    parser.add_argument("--city", default="Mathura", help="City name (e.g. Bengaluru, Chennai, Hyderabad, Mysuru, Mathura, Bareilly)")
     parser.add_argument("--pareto-csv", default="outputs/nsga2_pareto_front.csv")
     parser.add_argument("--n", type=int, default=3, help="Number of representative candidates to validate")
     parser.add_argument("--episode-days", type=int, default=180, help="Spot-check window (shorter than the full 365-day sizing search — see module docstring)")
@@ -59,20 +59,28 @@ def main() -> None:
     candidates = select_representative_candidates(pareto_df, n=args.n)
     logger.info(f"\n{candidates.to_string(index=False)}")
 
-    city_coords = {
-        "Mathura":  dict(lat=27.4924, lon=77.6737, altitude_m=182.0),
-        "Bareilly": dict(lat=28.3670, lon=79.4304, altitude_m=172.0),
-    }
-    coords = city_coords[args.city]
+    from src.solar.locations import get_city
+    from src.solar.pv_model import get_or_generate_solar_15min
+
+    city_info = get_city(args.city)
+    if city_info is None:
+        logger.error(f"Unknown city '{args.city}'. Please choose a valid Indian city.")
+        sys.exit(1)
+
+    city_name = city_info.name
+    coords = dict(lat=city_info.lat, lon=city_info.lon, altitude_m=city_info.altitude_m)
+
+    # Ensure weather data is ready
+    get_or_generate_solar_15min(city_name)
 
     from src.solar.nasa_power import load_cached
-    weather_hourly = load_cached(args.city, cache_dir="data/solar")
+    weather_hourly = load_cached(city_name, cache_dir="data/solar")
     weather_start = weather_hourly["timestamp"].min()
     weather_span_days = (weather_hourly["timestamp"].max() - weather_start).days
 
     n_days = min(400, weather_span_days - 5)
     load_kw, timestamps = _nsga2_script.build_test_household(n_days=n_days, start_date=str(weather_start.date()))
-    solar_curve_fn = _nsga2_script.RealSolarCurve(args.city, timestamps_target=timestamps, **coords)
+    solar_curve_fn = _nsga2_script.RealSolarCurve(city_name, timestamps_target=timestamps, **coords)
 
     grid = GridModel(fallback_outage_hours_per_day=4.0, outage_peak_hours=[10, 14, 18, 22])
 

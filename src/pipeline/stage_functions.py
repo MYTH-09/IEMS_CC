@@ -43,6 +43,7 @@ from src.grid.grid_model import GridModel
 from src.environment.energy_env import EnergyEnv, UNMET_LOAD_PENALTY_RATE_INR
 from src.controllers.rule_based import RuleBasedController
 from src.controllers.mpc_controller import MPCController
+from src.controllers.dqn_controller import DQNController
 from src.sizing.grid_search import run_grid_search, top_recommendations, simulate_system_size
 from src.report.financials import full_financial_analysis
 
@@ -232,13 +233,28 @@ async def stage_synthetic_load(params: dict, get_upstream: Callable) -> dict:
 
 async def stage_solar_generation(params: dict, get_upstream: Callable) -> dict:
     def _run():
-        solar_path = f"data/solar/{params['city']}_solar_15min.parquet"
-        if os.path.exists(solar_path):
-            df = pd.read_parquet(solar_path)
-            solar_kw = df["solar_power_kw"].to_numpy(dtype=np.float32)
-            timestamps = pd.DatetimeIndex(df["timestamp"])
-            source = "real_nasa_pvlib"
-        else:
+        city_name = params.get("city", "Mathura")
+        try:
+            from src.solar.pv_model import get_or_generate_solar_15min
+            from src.solar.locations import get_city
+
+            city_info = get_city(city_name)
+            if city_info is not None:
+                df = get_or_generate_solar_15min(city_name=city_info.name)
+                solar_kw = df["solar_power_kw"].to_numpy(dtype=np.float32)
+                timestamps = pd.DatetimeIndex(df["timestamp"])
+                source = "real_nasa_pvlib"
+            else:
+                solar_path = f"data/solar/{city_name}_solar_15min.parquet"
+                if os.path.exists(solar_path):
+                    df = pd.read_parquet(solar_path)
+                    solar_kw = df["solar_power_kw"].to_numpy(dtype=np.float32)
+                    timestamps = pd.DatetimeIndex(df["timestamp"])
+                    source = "real_nasa_pvlib"
+                else:
+                    raise FileNotFoundError(f"City '{city_name}' not found and no cached data.")
+        except Exception as exc:
+            logger.warning(f"Could not load/generate real solar data for {city_name} ({exc}) — using synthetic fallback")
             timestamps = pd.date_range("2024-01-01", periods=400*96, freq="15min")
             hours = (timestamps.hour + timestamps.minute/60.0).to_numpy(dtype=float)
             solar_kw = np.clip(3.0*np.exp(-((hours-12)**2)/8), 0, None).astype(np.float32)
@@ -599,10 +615,7 @@ async def stage_dqn(params: dict, get_upstream: Callable) -> dict:
     rec = get_upstream("ga")["recommended"]
 
     def _run():
-        model_path = "models/dqn_policy.zip"
-        if DQNController is None or not os.path.exists(model_path):
-            raise FileNotFoundError(f"'{model_path}' not found — run scripts/07_train_dqn.py --full first")
-        return _run_controller_demo(load, solar, params, DQNController(model_path=model_path),
+        return _run_controller_demo(load, solar, params, DQNController(model_path="models/dqn_policy.zip"),
                                       rec["panel_kw"], rec["battery_kwh"])
     return await asyncio.to_thread(_run)
 

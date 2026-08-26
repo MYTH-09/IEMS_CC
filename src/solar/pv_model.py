@@ -292,3 +292,83 @@ def load_solar_data(path: str) -> pd.DataFrame:
     df = pd.read_parquet(path)
     logger.info(f"Solar data loaded ← {path}  ({len(df):,} rows)")
     return df
+
+
+def is_city_solar_cached(city_name: str, cache_dir: str = "data/solar") -> bool:
+    """Check if the 15-minute simulated solar parquet file exists for a given city."""
+    import os
+    from src.solar.locations import get_city
+    city = get_city(city_name)
+    target_name = city.name if city is not None else city_name
+    parquet_file = os.path.join(cache_dir, f"{target_name}_solar_15min.parquet")
+    return os.path.exists(parquet_file)
+
+
+def get_or_generate_solar_15min(
+    city_name: str,
+    start_date: str = "2020-01-01",
+    end_date: str = "2021-12-31",
+    cache_dir: str = "data/solar",
+    capacity_kw: float = DEFAULT_SYSTEM["capacity_kw"],
+    force_refresh: bool = False,
+) -> pd.DataFrame:
+    """
+    Get 15-min simulated solar AC generation DataFrame for any supported Indian city.
+    If cached parquet exists, loads it directly.
+    Otherwise, fetches NASA POWER weather data, runs pvlib simulation, saves to parquet, and returns it.
+
+    Parameters
+    ----------
+    city_name     : Name or alias of the Indian city (e.g. "Bengaluru", "Chennai", "Hyderabad", "Mysore").
+    start_date    : Start date for NASA weather data if not cached.
+    end_date      : End date for NASA weather data if not cached.
+    cache_dir     : Directory for parquet files.
+    capacity_kw   : PV system capacity in kWp.
+    force_refresh : If True, re-fetches and re-simulates even if cached.
+
+    Returns
+    -------
+    pd.DataFrame
+        15-min simulated solar generation DataFrame.
+    """
+    import os
+    from src.solar.locations import get_city
+    from src.solar.nasa_power import fetch_solar_data
+
+    city = get_city(city_name)
+    if city is None:
+        raise ValueError(
+            f"Unknown city '{city_name}'. Please choose a valid Indian city name or alias."
+        )
+
+    out_path = os.path.join(cache_dir, f"{city.name}_solar_15min.parquet")
+
+    if os.path.exists(out_path) and not force_refresh:
+        return load_solar_data(out_path)
+
+    logger.info(f"Generating 15-min solar generation data for {city.display_name}...")
+
+    # 1. Fetch hourly weather data from NASA POWER (or load hourly year parquet if cached)
+    weather = fetch_solar_data(
+        lat=city.lat,
+        lon=city.lon,
+        start_date=start_date,
+        end_date=end_date,
+        location_name=city.name,
+        cache_dir=cache_dir,
+    )
+
+    # 2. Run pvlib PVWatts simulation with city-specific coordinates, optimal tilt, and altitude
+    solar_15min = simulate_pv(
+        weather_hourly=weather,
+        lat=city.lat,
+        lon=city.lon,
+        capacity_kw=capacity_kw,
+        tilt_deg=city.optimal_tilt,
+        azimuth_deg=DEFAULT_SYSTEM["azimuth_deg"],
+        altitude_m=city.altitude_m,
+    )
+
+    # 3. Save to disk for instant future loads
+    save_solar_data(solar_15min, out_path)
+    return solar_15min
