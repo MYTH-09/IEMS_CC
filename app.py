@@ -198,6 +198,9 @@ app.add_middleware(
 from pipeline_routes import router as pipeline_router
 app.include_router(pipeline_router)
 
+from ga_explainer_routes import router as ga_explainer_router
+app.include_router(ga_explainer_router)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Request / response schemas
 # ─────────────────────────────────────────────────────────────────────────────
