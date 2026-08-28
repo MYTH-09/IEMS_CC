@@ -1,4 +1,18 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data & Cache files
 *.csv
+*.parquet
+data/solar/*.parquet
+!data/solar/.gitkeep
+
+
+# Virtual Environments
 venv/
+.venv/
+env/
 **/site-packages/
-**/*.egg-info/
+**/*.egg-info/
