@@ -40,6 +40,8 @@ uvicorn app:app --reload --port 8000
 Open "pipeline_demo.html" or "iems_contractor_ui.html" via Live Server / browser:
 python -m http.server 5500
 ```
+http://localhost:5500/pipeline_demo.html
+
 All major Indian cities (Bengaluru, Chennai, Hyderabad, Mysuru, Delhi, Mumbai, Kolkata, etc.) are available in the City dropdown!
 
 
