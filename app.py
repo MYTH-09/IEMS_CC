@@ -201,6 +201,10 @@ app.include_router(pipeline_router)
 from ga_explainer_routes import router as ga_explainer_router
 app.include_router(ga_explainer_router)
 
+from src.solar.locations import get_city, list_cities, get_all_city_coords_dict
+from src.solar.pv_model import load_solar_data, DEFAULT_SYSTEM, get_or_generate_solar_15min, is_city_solar_cached
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Request / response schemas
 # ─────────────────────────────────────────────────────────────────────────────
