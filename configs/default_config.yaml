@@ -77,16 +77,17 @@ simulation:
 # ── DQN Hyperparameters (Stable-Baselines3 DQN) ──────────────────────────────
 dqn:
   learning_rate: 0.0003
-  batch_size: 64
-  buffer_size: 100000             # Experience replay buffer
-  gamma: 0.99                     # Discount factor
-  exploration_fraction: 0.20      # Fraction of training with epsilon decay
+  batch_size: 128
+  buffer_size: 300000             # Experience replay buffer
+  gamma: 0.995                    # Discount factor
+  exploration_fraction: 0.30      # Fraction of training with epsilon decay
   exploration_initial_eps: 1.0
   exploration_final_eps: 0.05
-  target_update_interval: 1000    # Steps between target network updates
+  target_update_interval: 500     # Steps between target network updates
   learning_starts: 2000           # Steps before learning begins
   train_freq: 4                   # Update every N steps
-  total_timesteps: 500000         # Total training steps
+  gradient_steps: 2               # Gradient updates per training interval
+  total_timesteps: 1500000        # Total training steps
   # Network architecture
   policy: "MlpPolicy"
   net_arch: [256, 256]            # Two hidden layers, 256 units each

@@ -218,14 +218,36 @@ class MPCController(BaseController):
 
     def _forecast_outages(self, env: EnergyEnv, horizon_steps: int) -> np.ndarray:
         idx = env._data_idx
-        outages = np.zeros(horizon_steps, dtype=np.float64)
-        for h in range(horizon_steps):
-            future_idx = idx + h
-            if future_idx < len(env.timestamps):
-                outages[h] = 1.0 if env.grid.is_outage(env.timestamps[future_idx]) else 0.0
-            else:
-                outages[h] = outages[h - 1] if h > 0 else 0.0
-        return outages
+        lookback = 96   # one day at 15-min resolution
+
+        source_start = idx - lookback
+        if source_start < 0:
+            current_outage = (
+                1.0 if env.grid.is_outage(env.timestamps[idx]) else 0.0
+            )
+            return np.full(horizon_steps, current_outage, dtype=np.float64)
+
+        source_end = source_start + horizon_steps
+        max_idx = len(env.timestamps)
+
+        if source_end <= max_idx:
+            source_timestamps = env.timestamps[source_start:source_end]
+            return np.array(
+                [1.0 if env.grid.is_outage(timestamp) else 0.0
+                 for timestamp in source_timestamps],
+                dtype=np.float64,
+            )
+
+        avail = max_idx - source_start
+        outages = np.array(
+            [1.0 if env.grid.is_outage(timestamp) else 0.0
+             for timestamp in env.timestamps[source_start:max_idx]],
+            dtype=np.float64,
+        )
+        return np.concatenate([
+            outages,
+            np.full(horizon_steps - avail, outages[-1], dtype=np.float64),
+        ])
 
     # ─────────────────────────────────────────────────────────────────────
 

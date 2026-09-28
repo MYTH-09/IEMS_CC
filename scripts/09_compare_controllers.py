@@ -105,7 +105,7 @@ def main() -> None:
     load, solar, timestamps = build_household_series(n_days=60, seed=999, load_scale=1.2)
     grid = GridModel(fallback_outage_hours_per_day=4.0, outage_peak_hours=[10, 14, 18, 22])
 
-    dqn_model_path = "models/dqn_policy.zip"
+    dqn_model_path = "models/checkpoints/best_model.zip"
     if not os.path.exists(dqn_model_path):
         logger.error(
             f"'{dqn_model_path}' not found. Run "

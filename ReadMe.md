@@ -219,3 +219,7 @@ Then open the frontend HTML file directly in a browser (no build step — it's a
 - **MPC vs. rule-based:** +283.9% net reward improvement
 - **DQN vs. rule-based:** +23.0% net reward improvement
 - **Sizing validation:** all three controllers (rule-based, MPC, DQN) agreed on the same candidate ranking for a tested household — high confidence
+
+### Phase 3 DQN Generalization Follow-up
+
+After fixing the MPC oracle-forecast leak, adding persistence-forecast features to the DQN observation, and retuning the DQN training budget and hyperparameters, DQN outperformed MPC across three held-out unseen households: average improvement was +20.2% versus rule-based, compared with MPC's +3.7%. This used the best-checkpoint model selected by EvalCallback rather than the regressed final 1.5M-step model. Caveat: the checkpoint was still selected against the seed=999 household that overlaps with `09_compare_controllers.py`'s reporting household; a cleaner retrain with a separate validation household is documented follow-up work and has not yet been done.

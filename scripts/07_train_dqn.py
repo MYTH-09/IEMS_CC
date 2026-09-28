@@ -34,12 +34,17 @@ from src.grid.grid_model import GridModel
 from src.controllers.rule_based import RuleBasedController
 from src.controllers.dqn_controller import train_dqn, DQNController
 
+try:
+    from stable_baselines3.common.callbacks import EvalCallback
+except Exception:
+    EvalCallback = None
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Synthetic household generator — used for both training variety and eval
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_household_series(n_days: int = 60, seed: int = 42, load_scale: float = 1.0):
+def build_household_series(n_days: int = 90, seed: int = 42, load_scale: float = 1.0):
     """
     Build a synthetic load + solar series for one household. Varying
     `seed` and `load_scale` across calls gives the DQN a distribution of
@@ -62,7 +67,7 @@ def build_household_series(n_days: int = 60, seed: int = 42, load_scale: float =
     return load, solar, timestamps
 
 
-def build_training_env(n_households: int = 6, n_days: int = 60) -> EnergyEnv:
+def build_training_env(n_households: int = 14, n_days: int = 90) -> EnergyEnv:
     """
     Build a training environment with a POOL of diverse synthetic
     households, so DQN is forced to learn a transferable charge/discharge
@@ -125,7 +130,7 @@ def main() -> None:
     parser.add_argument("--full", action="store_true", help="Run full 500k-timestep training instead of the quick smoke test")
     args = parser.parse_args()
 
-    total_timesteps = 500_000 if args.full else 5_000
+    total_timesteps = 1_500_000 if args.full else 5_000
     mode_label = "FULL TRAINING" if args.full else "QUICK SMOKE TEST"
 
     logger.info("━" * 55)
@@ -139,8 +144,40 @@ def main() -> None:
         )
 
     # ── Train ────────────────────────────────────────────────────────────────
-    train_env = build_training_env(n_households=6, n_days=60)
+    train_env = build_training_env(n_households=14, n_days=90)
     logger.info(f"Training environment: {train_env}")
+
+    eval_callback = None
+    if EvalCallback is not None:
+        callback_eval_load, callback_eval_solar, callback_eval_timestamps = (
+            build_household_series(n_days=60, seed=999, load_scale=1.2)
+        )
+        callback_eval_grid = GridModel(
+            fallback_outage_hours_per_day=4.0,
+            outage_peak_hours=[10, 14, 18, 22],
+        )
+        callback_eval_battery_config = dict(
+            capacity_kwh=10.0, max_charge_rate_kw=3.0,
+            max_discharge_rate_kw=3.0, round_trip_efficiency=0.90,
+            min_soc=0.10, max_soc=0.95, initial_soc=0.50,
+        )
+        callback_eval_env = EnergyEnv(
+            load_kw=callback_eval_load,
+            solar_kw=callback_eval_solar,
+            timestamps=callback_eval_timestamps,
+            battery_config=callback_eval_battery_config,
+            grid=callback_eval_grid,
+            episode_days=30,
+            seed=999,
+        )
+        eval_callback = EvalCallback(
+            callback_eval_env,
+            best_model_save_path="models/checkpoints",
+            log_path="models/checkpoints",
+            eval_freq=25_000,
+            deterministic=True,
+            render=False,
+        )
 
     model = train_dqn(
         env=train_env,
@@ -149,6 +186,7 @@ def main() -> None:
         tensorboard_log=None,   # keep smoke test lightweight; enable for --full runs
         verbose=1,
         seed=42,
+        callback=eval_callback,
     )
 
     # ── Evaluate on a held-out household (different seed → different profile) ─

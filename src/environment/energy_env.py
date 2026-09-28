@@ -186,8 +186,8 @@ class EnergyEnv(gym.Env):
         # ── Gym spaces ───────────────────────────────────────────────────────
         self.action_space = spaces.Discrete(4)
 
-        obs_low  = np.array([0, 0, 0, -1, -1, 0, 0, 0, -1], dtype=np.float32)
-        obs_high = np.array([1, 1, 1,  1,  1, 1, 1, 1,  1], dtype=np.float32)
+        obs_low  = np.array([0, 0, 0, -1, -1, 0, 0, 0, -1, 0, 0, 0], dtype=np.float32)
+        obs_high = np.array([1, 1, 1,  1,  1, 1, 1, 1,  1, 1, 1, 1], dtype=np.float32)
         self.observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
 
         # ── Episode state ────────────────────────────────────────────────────
@@ -386,6 +386,21 @@ class EnergyEnv(gym.Env):
         solar_norm = np.clip(self.solar_kw[idx] / self._max_power_kw, 0, 1)
         load_norm  = np.clip(self.load_kw[idx]  / self._max_power_kw, 0, 1)
 
+        lookback = 96   # one day at 15-min resolution
+        source_idx = idx - lookback
+        if source_idx < 0:
+            source_idx = idx
+
+        yesterday_solar_norm = np.clip(
+            self.solar_kw[source_idx] / self._max_power_kw, 0, 1
+        )
+        yesterday_load_norm = np.clip(
+            self.load_kw[source_idx] / self._max_power_kw, 0, 1
+        )
+        yesterday_is_outage = (
+            1.0 if self.grid.is_outage(self.timestamps[source_idx]) else 0.0
+        )
+
         hour = ts.hour + ts.minute / 60.0
         hour_sin = np.sin(2 * np.pi * hour / 24.0)
         hour_cos = np.cos(2 * np.pi * hour / 24.0)
@@ -401,6 +416,7 @@ class EnergyEnv(gym.Env):
             solar_norm, load_norm, self.battery.soc,
             hour_sin, hour_cos, is_weekend,
             cum_units_norm, is_outage, month_sin,
+            yesterday_solar_norm, yesterday_load_norm, yesterday_is_outage,
         ], dtype=np.float32)
         return obs
 

@@ -46,27 +46,29 @@ except Exception as _sb3_err:
 
 DEFAULT_DQN_HYPERPARAMS = dict(
     learning_rate=0.0003,
-    batch_size=64,
-    buffer_size=100_000,
-    gamma=0.99,
-    exploration_fraction=0.20,
+    batch_size=128,
+    buffer_size=300_000,
+    gamma=0.995,
+    exploration_fraction=0.30,
     exploration_initial_eps=1.0,
     exploration_final_eps=0.05,
-    target_update_interval=1000,
+    target_update_interval=500,
     learning_starts=2000,
     train_freq=4,
+    gradient_steps=2,
     policy_kwargs=dict(net_arch=[256, 256]),
 )
 
 
 def train_dqn(
     env: EnergyEnv,
-    total_timesteps: int = 500_000,
+    total_timesteps: int = 1_500_000,
     hyperparams: Optional[dict] = None,
     save_path: str = "models/dqn_policy.zip",
     tensorboard_log: Optional[str] = "logs/dqn_tensorboard",
     verbose: int = 1,
     seed: int = 42,
+    callback: Optional[BaseCallback] = None,
 ):
     """
     Train a DQN policy on the given environment and save it to disk.
@@ -95,9 +97,17 @@ def train_dqn(
     )
 
     try:
-        model.learn(total_timesteps=total_timesteps, progress_bar=True)
+        model.learn(
+            total_timesteps=total_timesteps,
+            callback=callback,
+            progress_bar=True,
+        )
     except Exception:
-        model.learn(total_timesteps=total_timesteps, progress_bar=False)
+        model.learn(
+            total_timesteps=total_timesteps,
+            callback=callback,
+            progress_bar=False,
+        )
 
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     model.save(save_path)
@@ -119,7 +129,7 @@ class _TrainedQPolicy:
     - Idles when battery is empty or solar surplus is fully utilized (Action 0).
     """
     def predict(self, obs: np.ndarray, deterministic: bool = True):
-        # Observation: [solar_kw, load_kw, soc, hour_sin, hour_cos, is_weekend, cumulative_units_norm, is_outage, month_sin]
+        # Observation: [solar_kw, load_kw, soc, hour_sin, hour_cos, is_weekend, cumulative_units_norm, is_outage, month_sin, yesterday_solar_kw, yesterday_load_kw, yesterday_is_outage]
         solar_kw = float(obs[0])
         load_kw = float(obs[1])
         soc = float(obs[2])

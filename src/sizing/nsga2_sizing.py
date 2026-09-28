@@ -236,7 +236,7 @@ def run_nsga2(
     npv_25yr_inr, payback_years, annual_unmet_load_kwh.
     """
     if n_workers is None:
-        n_workers = min(os.cpu_count() or 1, 8)
+        n_workers = 1
 
     logger.info(
         f"Running NSGA-II: pop_size={pop_size}, generations={n_generations} "
