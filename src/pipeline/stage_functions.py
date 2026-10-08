@@ -615,7 +615,7 @@ async def stage_dqn(params: dict, get_upstream: Callable) -> dict:
     rec = get_upstream("ga")["recommended"]
 
     def _run():
-        return _run_controller_demo(load, solar, params, DQNController(model_path="models/dqn_policy.zip"),
+        return _run_controller_demo(load, solar, params, DQNController(model_path="models/checkpoints/best_model.zip"),
                                       rec["panel_kw"], rec["battery_kwh"])
     return await asyncio.to_thread(_run)
 

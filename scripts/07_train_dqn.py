@@ -33,6 +33,7 @@ from src.environment.energy_env import EnergyEnv
 from src.grid.grid_model import GridModel
 from src.controllers.rule_based import RuleBasedController
 from src.controllers.dqn_controller import train_dqn, DQNController
+from src.pipeline.stage_functions import _derive_monthly_outage_multipliers
 
 try:
     from stable_baselines3.common.callbacks import EvalCallback
@@ -67,7 +68,11 @@ def build_household_series(n_days: int = 90, seed: int = 42, load_scale: float =
     return load, solar, timestamps
 
 
-def build_training_env(n_households: int = 14, n_days: int = 90) -> EnergyEnv:
+def build_training_env(
+    n_households: int = 14,
+    n_days: int = 90,
+    city: str = "Mathura",
+) -> EnergyEnv:
     """
     Build a training environment with a POOL of diverse synthetic
     households, so DQN is forced to learn a transferable charge/discharge
@@ -85,16 +90,38 @@ def build_training_env(n_households: int = 14, n_days: int = 90) -> EnergyEnv:
     primary_dict = {"load_kw": primary[0], "solar_kw": primary[1], "timestamps": primary[2]}
 
     load_scales = np.linspace(0.6, 1.6, n_households - 1)
+    battery_capacities_kwh = [5.0, 7.5, 10.0, 15.0, 20.0]
+
+    def make_battery_config(capacity_kwh: float) -> dict:
+        rate_kw = min(3.0, capacity_kwh)
+        return {
+            "capacity_kwh": capacity_kwh,
+            "max_charge_rate_kw": rate_kw,
+            "max_discharge_rate_kw": rate_kw,
+            "round_trip_efficiency": 0.90,
+            "min_soc": 0.10,
+            "max_soc": 0.95,
+            "initial_soc": 0.50,
+        }
+
     additional = []
     for i, scale in enumerate(load_scales):
         load, solar, ts = build_household_series(n_days=n_days, seed=200 + i, load_scale=float(scale))
-        additional.append({"load_kw": load, "solar_kw": solar, "timestamps": ts})
+        additional.append({
+            "load_kw": load,
+            "solar_kw": solar,
+            "timestamps": ts,
+            "battery_config": make_battery_config(
+                battery_capacities_kwh[i % len(battery_capacities_kwh)]
+            ),
+        })
 
-    grid = GridModel(fallback_outage_hours_per_day=4.0, outage_peak_hours=[10, 14, 18, 22])
-    battery_config = dict(
-        capacity_kwh=10.0, max_charge_rate_kw=3.0, max_discharge_rate_kw=3.0,
-        round_trip_efficiency=0.90, min_soc=0.10, max_soc=0.95, initial_soc=0.50,
+    grid = GridModel(
+        fallback_outage_hours_per_day=4.0,
+        outage_peak_hours=[10, 14, 18, 22],
+        monthly_outage_multiplier=_derive_monthly_outage_multipliers(city),
     )
+    battery_config = make_battery_config(10.0)
     env = EnergyEnv(
         load_kw=primary_dict["load_kw"], solar_kw=primary_dict["solar_kw"],
         timestamps=primary_dict["timestamps"],
@@ -130,7 +157,7 @@ def main() -> None:
     parser.add_argument("--full", action="store_true", help="Run full 500k-timestep training instead of the quick smoke test")
     args = parser.parse_args()
 
-    total_timesteps = 1_500_000 if args.full else 5_000
+    total_timesteps = 3_000_000 if args.full else 5_000
     mode_label = "FULL TRAINING" if args.full else "QUICK SMOKE TEST"
 
     logger.info("━" * 55)
@@ -144,7 +171,7 @@ def main() -> None:
         )
 
     # ── Train ────────────────────────────────────────────────────────────────
-    train_env = build_training_env(n_households=14, n_days=90)
+    train_env = build_training_env(n_households=14, n_days=90, city="Mathura")
     logger.info(f"Training environment: {train_env}")
 
     eval_callback = None
@@ -210,7 +237,7 @@ def main() -> None:
         battery_config=battery_config, grid=eval_grid, episode_days=30, seed=999,
     )
 
-    dqn_controller = DQNController(model_path="models/dqn_policy.zip")
+    dqn_controller = DQNController(model_path="models/checkpoints/best_model.zip")
     rb_controller  = RuleBasedController()
 
     dqn_stats = run_episode(dqn_env, dqn_controller, seed=999)

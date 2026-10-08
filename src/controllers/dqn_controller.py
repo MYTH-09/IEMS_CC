@@ -49,7 +49,7 @@ DEFAULT_DQN_HYPERPARAMS = dict(
     batch_size=128,
     buffer_size=300_000,
     gamma=0.995,
-    exploration_fraction=0.30,
+    exploration_fraction=0.40,
     exploration_initial_eps=1.0,
     exploration_final_eps=0.05,
     target_update_interval=500,
@@ -169,7 +169,7 @@ class DQNController(BaseController):
 
     name = "dqn"
 
-    def __init__(self, model_path: str = "models/dqn_policy.zip", deterministic: bool = True):
+    def __init__(self, model_path: str = "models/checkpoints/best_model.zip", deterministic: bool = True):
         self.model_path = model_path
         self.deterministic = deterministic
         self.model = None
@@ -177,7 +177,20 @@ class DQNController(BaseController):
         if _SB3_AVAILABLE and DQN is not None and os.path.exists(model_path):
             try:
                 self.model = DQN.load(model_path)
+                model_shape = getattr(
+                    getattr(self.model, "observation_space", None),
+                    "shape",
+                    None,
+                )
+                if model_shape != (13,):
+                    raise ValueError(
+                        f"DQN model expects observation shape {model_shape}, "
+                        "but the current EnergyEnv requires (13,). "
+                        "Retrain the model from scratch."
+                    )
                 logger.info(f"Loaded DQN neural weights from {model_path}")
+            except ValueError:
+                raise
             except Exception:
                 self.model = _TrainedQPolicy()
         else:
@@ -185,5 +198,15 @@ class DQNController(BaseController):
 
     def select_action(self, env: EnergyEnv) -> int:
         obs = env._get_observation()
+        expected_shape = getattr(
+            getattr(self.model, "observation_space", None),
+            "shape",
+            None,
+        )
+        if expected_shape is not None and expected_shape != obs.shape:
+            raise ValueError(
+                f"DQN observation shape mismatch: model expects {expected_shape}, "
+                f"but EnergyEnv returned {obs.shape}. Retrain the model from scratch."
+            )
         action, _ = self.model.predict(obs, deterministic=self.deterministic)
         return int(action)

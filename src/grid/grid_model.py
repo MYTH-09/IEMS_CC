@@ -27,6 +27,7 @@ This module exposes both:
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -245,7 +246,11 @@ class GridModel:
         peak_boost = 2.0 if hour in self._outage_peak_hours else 1.0
         month_mult = self._monthly_outage_multiplier.get(month, 1.0)                # ADD
         prob = min(base_prob * peak_boost * month_mult, 1.0)                        # CHANGED
-        seed_val = hash((timestamp.date(), hour)) % (2**32)
+        hash_input = f"{timestamp.date().isoformat()}:{hour}".encode("ascii")
+        seed_val = int.from_bytes(
+            hashlib.sha256(hash_input).digest()[:4],
+            byteorder="big",
+        )
         rng = np.random.default_rng(seed_val)
         return bool(rng.random() < prob)
 

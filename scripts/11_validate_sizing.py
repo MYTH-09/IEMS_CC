@@ -44,7 +44,7 @@ def main() -> None:
     parser.add_argument("--n", type=int, default=3, help="Number of representative candidates to validate")
     parser.add_argument("--episode-days", type=int, default=180, help="Spot-check window (shorter than the full 365-day sizing search — see module docstring)")
     parser.add_argument("--skip-dqn", action="store_true")
-    parser.add_argument("--dqn-model-path", default="models/dqn_policy.zip")
+    parser.add_argument("--dqn-model-path", default="models/checkpoints/best_model.zip")
     args = parser.parse_args()
 
     logger.info("━" * 60)

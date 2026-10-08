@@ -6,18 +6,18 @@
   "all_controller_rankings": {
     "dqn": [
       "best_npv",
-      "best_backup",
-      "most_balanced"
+      "most_balanced",
+      "best_backup"
     ],
     "mpc": [
       "best_npv",
-      "best_backup",
-      "most_balanced"
+      "most_balanced",
+      "best_backup"
     ],
     "rule_based": [
       "best_npv",
-      "best_backup",
-      "most_balanced"
+      "most_balanced",
+      "best_backup"
     ]
   },
   "disagreement_details": []

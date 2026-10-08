@@ -16,36 +16,36 @@
   "results": [
     {
       "controller": "rule_based",
-      "total_reward_inr": 36.6,
-      "total_cost_inr": -36.6,
-      "grid_import_kwh": 13.31,
-      "grid_export_kwh": 41.61,
-      "unmet_load_kwh": 1.52,
+      "total_reward_inr": 3.14,
+      "total_cost_inr": -3.14,
+      "grid_import_kwh": 11.16,
+      "grid_export_kwh": 38.27,
+      "unmet_load_kwh": 3.68,
       "final_battery_soc": 0.1534,
       "battery_cycles": 12.751,
-      "runtime_sec": 0.32
+      "runtime_sec": 0.41
     },
     {
       "controller": "dqn",
-      "total_reward_inr": 56.86,
-      "total_cost_inr": -56.86,
-      "grid_import_kwh": 26.67,
-      "grid_export_kwh": 59.19,
-      "unmet_load_kwh": 0.12,
-      "final_battery_soc": 0.1798,
-      "battery_cycles": 12.294,
-      "runtime_sec": 1.58
+      "total_reward_inr": 56.52,
+      "total_cost_inr": -56.52,
+      "grid_import_kwh": 41.51,
+      "grid_export_kwh": 82.3,
+      "unmet_load_kwh": 0.68,
+      "final_battery_soc": 0.1976,
+      "battery_cycles": 11.525,
+      "runtime_sec": 3.4
     },
     {
       "controller": "mpc",
-      "total_reward_inr": 40.83,
-      "total_cost_inr": -40.83,
-      "grid_import_kwh": 15.81,
-      "grid_export_kwh": 46.56,
-      "unmet_load_kwh": 1.51,
+      "total_reward_inr": 22.26,
+      "total_cost_inr": -22.26,
+      "grid_import_kwh": 14.46,
+      "grid_export_kwh": 46.41,
+      "unmet_load_kwh": 3.02,
       "final_battery_soc": 0.1534,
-      "battery_cycles": 12.739,
-      "runtime_sec": 27.64
+      "battery_cycles": 12.73,
+      "runtime_sec": 26.98
     }
   ]
 }

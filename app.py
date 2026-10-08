@@ -422,7 +422,7 @@ def size_system(req: SizingRequest) -> dict:
     # computation behind it (a real gap caught and fixed here, not present
     # by design).
     if req.validate_candidates_flag:
-        dqn_path = "models/dqn_policy.zip"
+        dqn_path = "models/checkpoints/best_model.zip"
         dqn_path = dqn_path if os.path.exists(dqn_path) else None
 
         candidates_df = pd.DataFrame([

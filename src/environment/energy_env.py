@@ -13,7 +13,7 @@ Action space (Discrete(4))
     2 = charge_from_grid     (battery charges by importing from grid)
     3 = discharge_to_load    (battery discharges to cover household load)
 
-Observation space (Box, 9 features)
+Observation space (Box, 12 features)
 -------------------------------------
     [0] solar_kw                       (current solar generation, kW)
     [1] load_kw                        (current household load, kW)
@@ -65,6 +65,7 @@ from src.grid.grid_model import GridModel
 SLOTS_PER_DAY        = 96
 DEFAULT_EPISODE_DAYS = 30
 DEFAULT_DT_HOURS      = 15.0 / 60.0
+MAX_SIZING_BATTERY_KWH = 20.0
 UNMET_LOAD_PENALTY_RATE_INR = 15.0   # ₹/kWh — deliberately > top tariff slab,
                                        # so the agent learns unmet load during
                                        # a foreseeable outage is worse than any
@@ -149,10 +150,19 @@ class EnergyEnv(gym.Env):
         super().__init__()
 
         # ── Build the household pool (primary + any additional) ────────────
-        primary = {"load_kw": np.asarray(load_kw, dtype=np.float32),
-                   "solar_kw": np.asarray(solar_kw, dtype=np.float32),
-                   "timestamps": pd.DatetimeIndex(timestamps)}
-        self._household_pool: list[dict] = [primary] + list(additional_households or [])
+        self.battery_config = dict(battery_config or {})
+        primary = {
+            "load_kw": np.asarray(load_kw, dtype=np.float32),
+            "solar_kw": np.asarray(solar_kw, dtype=np.float32),
+            "timestamps": pd.DatetimeIndex(timestamps),
+            "battery_config": dict(self.battery_config),
+        }
+        self._household_pool: list[dict] = [primary] + [
+            {**household, "battery_config": dict(
+                household.get("battery_config", self.battery_config)
+            )}
+            for household in (additional_households or [])
+        ]
 
         self.episode_steps = int(episode_days * SLOTS_PER_DAY)
         for i, h in enumerate(self._household_pool):
@@ -171,7 +181,6 @@ class EnergyEnv(gym.Env):
         self.timestamps = primary["timestamps"]
         self.dt_hours   = dt_hours
 
-        self.battery_config = battery_config or {}
         self.battery = BatteryModel(**self.battery_config)
         self.grid    = grid or GridModel()
 
@@ -186,8 +195,8 @@ class EnergyEnv(gym.Env):
         # ── Gym spaces ───────────────────────────────────────────────────────
         self.action_space = spaces.Discrete(4)
 
-        obs_low  = np.array([0, 0, 0, -1, -1, 0, 0, 0, -1, 0, 0, 0], dtype=np.float32)
-        obs_high = np.array([1, 1, 1,  1,  1, 1, 1, 1,  1, 1, 1, 1], dtype=np.float32)
+        obs_low  = np.array([0, 0, 0, 0, -1, -1, 0, 0, 0, -1, 0, 0, 0], dtype=np.float32)
+        obs_high = np.array([1, 1, 1, 1,  1,  1, 1, 1, 1,  1, 1, 1, 1], dtype=np.float32)
         self.observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
 
         # ── Episode state ────────────────────────────────────────────────────
@@ -226,6 +235,8 @@ class EnergyEnv(gym.Env):
         self.load_kw    = household["load_kw"]
         self.solar_kw   = household["solar_kw"]
         self.timestamps = household["timestamps"]
+        self.battery_config = dict(household["battery_config"])
+        self.battery = BatteryModel(**self.battery_config)
 
         # Sample a random valid start index within the selected household's series
         max_start = len(self.load_kw) - self.episode_steps - 1
@@ -411,9 +422,12 @@ class EnergyEnv(gym.Env):
             self._cumulative_units_this_month / self._cum_units_norm_cap, 0, 1
         )
         is_outage = 1.0 if self.grid.is_outage(ts) else 0.0
+        battery_capacity_norm = np.clip(
+            self.battery.capacity_kwh / MAX_SIZING_BATTERY_KWH, 0, 1
+        )
 
         obs = np.array([
-            solar_norm, load_norm, self.battery.soc,
+            solar_norm, load_norm, self.battery.soc, battery_capacity_norm,
             hour_sin, hour_cos, is_weekend,
             cum_units_norm, is_outage, month_sin,
             yesterday_solar_norm, yesterday_load_norm, yesterday_is_outage,
