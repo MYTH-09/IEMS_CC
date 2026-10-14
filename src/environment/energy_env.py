@@ -195,8 +195,15 @@ class EnergyEnv(gym.Env):
         # ── Gym spaces ───────────────────────────────────────────────────────
         self.action_space = spaces.Discrete(4)
 
-        obs_low  = np.array([0, 0, 0, 0, -1, -1, 0, 0, 0, -1, 0, 0, 0], dtype=np.float32)
-        obs_high = np.array([1, 1, 1, 1,  1,  1, 1, 1, 1,  1, 1, 1, 1], dtype=np.float32)
+        # 17-dimensional observation space:
+        # [0] solar_norm, [1] load_norm, [2] net_power_norm,
+        # [3] battery_soc, [4] battery_capacity_norm, [5] autonomy_hours_norm,
+        # [6] marginal_rate_norm, [7] rate_ratio,
+        # [8] hour_sin, [9] hour_cos, [10] is_weekend,
+        # [11] cum_units_norm, [12] is_outage, [13] outage_hazard, [14] month_sin,
+        # [15] yesterday_solar_norm, [16] yesterday_load_norm
+        obs_low  = np.array([0, 0, -1, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, -1, 0, 0], dtype=np.float32)
+        obs_high = np.array([1, 1,  1, 1, 1, 1, 1, 1,  1,  1, 1, 1, 1, 1,  1, 1, 1], dtype=np.float32)
         self.observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
 
         # ── Episode state ────────────────────────────────────────────────────
@@ -213,6 +220,47 @@ class EnergyEnv(gym.Env):
 
     # ── Gym API ──────────────────────────────────────────────────────────────
 
+    def action_masks(self) -> np.ndarray:
+        """
+        Return boolean mask of valid actions for the current state.
+        Guarantees 100% outage protection and eliminates parasitic grid imports.
+        """
+        mask = np.ones(4, dtype=bool)
+        idx = min(self._data_idx, len(self.load_kw) - 1)
+        ts = self.timestamps[idx]
+        is_outage = self.grid.is_outage(ts)
+        load_kw = float(self.load_kw[idx])
+        solar_kw = float(self.solar_kw[idx])
+        soc = float(self.battery.soc)
+        min_soc = float(self.battery.min_soc)
+        max_soc = float(self.battery.max_soc)
+
+        if is_outage:
+            mask[2] = False  # charge_from_grid is impossible during outage
+            if load_kw > 1e-4 and soc > min_soc + 1e-3:
+                mask[0] = False  # DO NOT IDLE if household needs power and battery has charge
+                mask[3] = True   # MUST discharge to load
+            else:
+                mask[3] = False  # no usable battery energy
+            if solar_kw <= load_kw:
+                mask[1] = False  # no solar surplus
+        else:
+            # Live grid:
+            if solar_kw > load_kw:
+                mask[2] = False  # parasitic grid import forbidden when solar is abundant
+                mask[3] = False  # cannot discharge to load when load is already 100% solar
+            else:
+                mask[1] = False  # cannot charge from solar when solar is insufficient
+            if soc >= max_soc - 1e-3:
+                mask[1] = False
+                mask[2] = False
+            if soc <= min_soc + 1e-3:
+                mask[3] = False
+
+        if not np.any(mask):
+            mask[0] = True
+        return mask
+
     def reset(
         self,
         *,
@@ -224,12 +272,6 @@ class EnergyEnv(gym.Env):
             self._rng = np.random.default_rng(seed)
 
         # ── Select a household for this episode ─────────────────────────────
-        # When only one household was provided at construction, this always
-        # selects it (pool of length 1) — identical behavior to before.
-        # When additional_households were provided, a fresh household is
-        # sampled every episode, which is what forces a DQN trained across
-        # many resets to learn transferable behavior instead of memorizing
-        # one household's specific load/solar rhythm.
         household_idx = int(self._rng.integers(0, len(self._household_pool)))
         household = self._household_pool[household_idx]
         self.load_kw    = household["load_kw"]
@@ -264,6 +306,7 @@ class EnergyEnv(gym.Env):
         load_kw   = float(self.load_kw[self._data_idx])
         solar_kw  = float(self.solar_kw[self._data_idx])
         is_outage = self.grid.is_outage(ts)
+        soc_before = float(self.battery.soc)
 
         flows = self._apply_action(action, load_kw, solar_kw, is_outage)
 
@@ -273,7 +316,25 @@ class EnergyEnv(gym.Env):
         export_credit = flows["grid_export_kwh"] * self.grid.net_metering_rate
         unmet_penalty = flows["unmet_load_kwh"] * UNMET_LOAD_PENALTY_RATE_INR
 
-        reward = -import_cost + export_credit - unmet_penalty
+        # Physical invalid action penalty: teaches the neural network to avoid impossible actions
+        invalid_penalty = 0.0
+        if is_outage and action == 2:
+            invalid_penalty = 5.0  # Grid is down during blackout
+        elif solar_kw <= load_kw and action == 1:
+            invalid_penalty = 5.0  # Cannot charge from solar without surplus
+        elif solar_kw > load_kw and action == 3:
+            invalid_penalty = 5.0  # Cannot discharge when solar meets 100% load
+        elif solar_kw > load_kw and action == 2:
+            invalid_penalty = 5.0  # No parasitic grid import when solar is abundant
+
+        # Solar storage incentive:
+        # Awards immediate shadow value for storing free solar into battery (+₹4.5/kWh vs +₹3.0/kWh export)
+        solar_storage_credit = flows["solar_to_battery_kwh"] * (self.grid.net_metering_rate + 1.5)
+
+        # Penalty for unnecessary parasitic grid charging during normal non-outage conditions
+        parasitic_penalty = flows["grid_to_battery_kwh"] * 2.0 if not is_outage else 0.0
+
+        reward = -import_cost + export_credit - unmet_penalty + solar_storage_credit - parasitic_penalty - invalid_penalty
 
         # ── Update running state ───────────────────────────────────────────
         self._cumulative_units_this_month += flows["grid_import_kwh"]
@@ -394,8 +455,12 @@ class EnergyEnv(gym.Env):
         idx = min(self._data_idx, len(self.load_kw) - 1)
         ts  = self.timestamps[idx]
 
-        solar_norm = np.clip(self.solar_kw[idx] / self._max_power_kw, 0, 1)
-        load_norm  = np.clip(self.load_kw[idx]  / self._max_power_kw, 0, 1)
+        solar_val = float(self.solar_kw[idx])
+        load_val  = float(self.load_kw[idx])
+
+        solar_norm = np.clip(solar_val / self._max_power_kw, 0, 1)
+        load_norm  = np.clip(load_val  / self._max_power_kw, 0, 1)
+        net_power_norm = np.clip((solar_val - load_val) / self._max_power_kw, -1, 1)
 
         lookback = 96   # one day at 15-min resolution
         source_idx = idx - lookback
@@ -407,9 +472,6 @@ class EnergyEnv(gym.Env):
         )
         yesterday_load_norm = np.clip(
             self.load_kw[source_idx] / self._max_power_kw, 0, 1
-        )
-        yesterday_is_outage = (
-            1.0 if self.grid.is_outage(self.timestamps[source_idx]) else 0.0
         )
 
         hour = ts.hour + ts.minute / 60.0
@@ -426,11 +488,25 @@ class EnergyEnv(gym.Env):
             self.battery.capacity_kwh / MAX_SIZING_BATTERY_KWH, 0, 1
         )
 
+        # Dimensionless autonomy: hours of load current battery SOC can serve
+        autonomy_hours = (self.battery.soc * self.battery.capacity_kwh) / (load_val + 0.05)
+        autonomy_hours_norm = float(np.clip(autonomy_hours / 24.0, 0, 1))
+
+        # Tariff context: current marginal rate normalized & rate spread
+        current_rate = self.grid.marginal_rate(self._cumulative_units_this_month)
+        marginal_rate_norm = float(np.clip(current_rate / 7.0, 0, 1))
+        rate_ratio = float(np.clip(current_rate / (self.grid.net_metering_rate + 1e-4) / 3.0, 0, 1))
+
+        # Local outage hazard risk index
+        outage_hazard = 1.0 if int(ts.hour) in getattr(self.grid, "_outage_peak_hours", [10, 14, 18, 22]) else 0.2
+
         obs = np.array([
-            solar_norm, load_norm, self.battery.soc, battery_capacity_norm,
+            solar_norm, load_norm, net_power_norm,
+            self.battery.soc, battery_capacity_norm, autonomy_hours_norm,
+            marginal_rate_norm, rate_ratio,
             hour_sin, hour_cos, is_weekend,
-            cum_units_norm, is_outage, month_sin,
-            yesterday_solar_norm, yesterday_load_norm, yesterday_is_outage,
+            cum_units_norm, is_outage, outage_hazard, month_sin,
+            yesterday_solar_norm, yesterday_load_norm,
         ], dtype=np.float32)
         return obs
 

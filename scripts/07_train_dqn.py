@@ -69,28 +69,22 @@ def build_household_series(n_days: int = 90, seed: int = 42, load_scale: float =
 
 
 def build_training_env(
-    n_households: int = 14,
+    n_households: int = 18,
     n_days: int = 90,
     city: str = "Mathura",
 ) -> EnergyEnv:
     """
-    Build a training environment with a POOL of diverse synthetic
-    households, so DQN is forced to learn a transferable charge/discharge
-    strategy rather than memorizing one household's specific rhythm.
-
-    Diversity dimensions varied across the pool: random seed (different
-    day-to-day noise pattern) and load_scale (different household size,
-    0.6x-1.6x a moderate baseline). All households share the same
-    battery_config and grid model — that's held constant here so the
-    fix under test (multi-household rotation) is isolated; varying
-    battery/grid too is a natural next extension once this is confirmed
-    to help.
+    Build a training environment with a POOL of diverse multi-city
+    households and sizing variations, so DQN is forced to learn a transferable,
+    scale-invariant control law across different climates, solar shapes, and batteries.
     """
     primary = build_household_series(n_days=n_days, seed=100, load_scale=1.0)
     primary_dict = {"load_kw": primary[0], "solar_kw": primary[1], "timestamps": primary[2]}
 
-    load_scales = np.linspace(0.6, 1.6, n_households - 1)
-    battery_capacities_kwh = [5.0, 7.5, 10.0, 15.0, 20.0]
+    load_scales = np.linspace(0.6, 2.0, n_households - 1)
+    battery_capacities_kwh = [3.0, 5.0, 7.0, 10.0, 15.0, 20.0]
+    panel_kw_list = [2.0, 3.0, 5.0, 7.5, 10.0]
+    cities = ["Mathura", "Bengaluru", "Mumbai"]
 
     def make_battery_config(capacity_kwh: float) -> dict:
         rate_kw = min(3.0, capacity_kwh)
@@ -106,14 +100,29 @@ def build_training_env(
 
     additional = []
     for i, scale in enumerate(load_scales):
+        chosen_city = cities[i % len(cities)]
+        cap_kwh = battery_capacities_kwh[i % len(battery_capacities_kwh)]
+        p_kw = panel_kw_list[i % len(panel_kw_list)]
+
         load, solar, ts = build_household_series(n_days=n_days, seed=200 + i, load_scale=float(scale))
+
+        # If real solar data exists for this city, incorporate its realistic daily curve
+        solar_path = f"data/solar/{chosen_city}_solar_15min.parquet"
+        if os.path.exists(solar_path):
+            try:
+                sdf = pd.read_parquet(solar_path, columns=["solar_power_kw"])
+                if len(sdf) >= len(solar):
+                    real_solar = (sdf["solar_power_kw"].iloc[:len(solar)].to_numpy(dtype=np.float32) * p_kw)
+                    # Blend 70% real solar curve + 30% synthetic to build robust resilience
+                    solar = (0.7 * real_solar + 0.3 * solar).astype(np.float32)
+            except Exception:
+                pass
+
         additional.append({
             "load_kw": load,
             "solar_kw": solar,
             "timestamps": ts,
-            "battery_config": make_battery_config(
-                battery_capacities_kwh[i % len(battery_capacities_kwh)]
-            ),
+            "battery_config": make_battery_config(cap_kwh),
         })
 
     grid = GridModel(
@@ -128,8 +137,8 @@ def build_training_env(
         battery_config=battery_config, grid=grid, episode_days=30, seed=42,
         additional_households=additional,
     )
-    logger.info(f"Training pool: {len(env._household_pool)} households "
-                f"(load_scale range ≈ 0.6x-1.6x)")
+    logger.info(f"Training pool: {len(env._household_pool)} multi-city households "
+                f"(cities={cities}, battery=3-20kWh, load_scale=0.6x-2.0x)")
     return env
 
 
@@ -154,11 +163,17 @@ def run_episode(env: EnergyEnv, controller, seed: int) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--full", action="store_true", help="Run full 500k-timestep training instead of the quick smoke test")
+    parser.add_argument("--full", action="store_true", help="Run full production training (500k timesteps)")
+    parser.add_argument("--timesteps", type=int, default=None, help="Custom number of timesteps to train")
+    parser.add_argument("--eval-only", action="store_true", help="Skip training and evaluate the saved model policy directly")
     args = parser.parse_args()
 
-    total_timesteps = 3_000_000 if args.full else 5_000
-    mode_label = "FULL TRAINING" if args.full else "QUICK SMOKE TEST"
+    if args.timesteps is not None:
+        total_timesteps = args.timesteps
+    else:
+        total_timesteps = 500_000 if args.full else 5_000
+
+    mode_label = f"FULL TRAINING ({total_timesteps:,} steps)" if (args.full or args.timesteps) else "QUICK SMOKE TEST (5,000 steps)"
 
     logger.info("━" * 55)
     logger.info(f"  IEMS DQN Controller — {mode_label}")
@@ -197,24 +212,32 @@ def main() -> None:
             episode_days=30,
             seed=999,
         )
+        eval_freq = max(5_000, total_timesteps // 50)
         eval_callback = EvalCallback(
             callback_eval_env,
             best_model_save_path="models/checkpoints",
             log_path="models/checkpoints",
-            eval_freq=25_000,
+            eval_freq=eval_freq,
             deterministic=True,
             render=False,
         )
 
-    model = train_dqn(
-        env=train_env,
-        total_timesteps=total_timesteps,
-        save_path="models/dqn_policy.zip",
-        tensorboard_log=None,   # keep smoke test lightweight; enable for --full runs
-        verbose=1,
-        seed=42,
-        callback=eval_callback,
-    )
+    if not args.eval_only:
+        model = train_dqn(
+            env=train_env,
+            total_timesteps=total_timesteps,
+            save_path="models/dqn_policy.zip",
+            tensorboard_log=None,   # keep smoke test lightweight; enable for --full runs
+            verbose=1,
+            seed=42,
+            callback=eval_callback,
+        )
+
+        if model is not None and not os.path.exists("models/checkpoints/best_model.zip"):
+            os.makedirs("models/checkpoints", exist_ok=True)
+            model.save("models/checkpoints/best_model.zip")
+    else:
+        logger.info("  Skipping training (--eval-only active). Evaluating existing model...")
 
     # ── Evaluate on a held-out household (different seed → different profile) ─
     logger.info("\n" + "─" * 55)
@@ -252,15 +275,15 @@ def main() -> None:
                 f"export={rb_stats['grid_export_kwh']:.1f}kWh  "
                 f"unmet={rb_stats['unmet_load_kwh']:.1f}kWh")
 
-    if not args.full:
-        logger.warning(
-            "\n  Quick mode: DQN is undertrained (5k steps) and is NOT expected "
-            "to beat rule-based yet. This run only confirms the pipeline "
-            "(train → save → load → infer) works without error."
-        )
+    if dqn_stats["total_reward_inr"] > rb_stats["total_reward_inr"]:
+        logger.success("\n  ✓ Trained DQN outperforms the rule-based baseline!")
     else:
-        if dqn_stats["total_reward_inr"] > rb_stats["total_reward_inr"]:
-            logger.success("\n  ✓ Trained DQN outperforms the rule-based baseline")
+        if not (args.full or args.eval_only):
+            logger.warning(
+                "\n  Quick mode: DQN is undertrained (5k steps) and is NOT expected "
+                "to beat rule-based yet. This run only confirms the pipeline "
+                "(train → save → load → infer) works without error."
+            )
         else:
             logger.warning(
                 "\n  DQN did not outperform rule-based — consider longer "
