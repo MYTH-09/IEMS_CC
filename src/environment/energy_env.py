@@ -222,8 +222,17 @@ class EnergyEnv(gym.Env):
 
     def action_masks(self) -> np.ndarray:
         """
-        Return boolean mask of valid actions for the current state.
-        Guarantees 100% outage protection and eliminates parasitic grid imports.
+        Return boolean mask of valid actions for the current state based on
+        physical feasibility and grid availability:
+        - Action 0 (idle): Always valid except during an outage when there is
+          an active load deficit (load > solar) and the battery has usable energy.
+        - Action 1 (charge_from_solar): Valid only when solar surplus exists
+          (solar > load) and the battery can accept charge (soc < max_soc).
+        - Action 2 (charge_from_grid): Valid only when the grid is alive (not outage),
+          no solar surplus exists (solar <= load), the battery is not full (soc < 0.75),
+          and an outage hazard is imminent (hazard >= 0.60).
+        - Action 3 (discharge_to_load): Valid only when a load deficit exists
+          (load > solar) and the battery has usable charge (soc > min_soc).
         """
         mask = np.ones(4, dtype=bool)
         idx = min(self._data_idx, len(self.load_kw) - 1)
@@ -235,28 +244,29 @@ class EnergyEnv(gym.Env):
         min_soc = float(self.battery.min_soc)
         max_soc = float(self.battery.max_soc)
 
-        if is_outage:
-            mask[2] = False  # charge_from_grid is impossible during outage
-            if load_kw > 1e-4 and soc > min_soc + 1e-3:
-                mask[0] = False  # DO NOT IDLE if household needs power and battery has charge
-                mask[3] = True   # MUST discharge to load
-            else:
-                mask[3] = False  # no usable battery energy
-            if solar_kw <= load_kw:
-                mask[1] = False  # no solar surplus
-        else:
-            # Live grid:
-            if solar_kw > load_kw:
-                mask[2] = False  # parasitic grid import forbidden when solar is abundant
-                mask[3] = False  # cannot discharge to load when load is already 100% solar
-            else:
-                mask[1] = False  # cannot charge from solar when solar is insufficient
-            if soc >= max_soc - 1e-3:
-                mask[1] = False
-                mask[2] = False
-            if soc <= min_soc + 1e-3:
-                mask[3] = False
+        # 1. Solar charging (Action 1): physical surplus required, battery not full
+        if solar_kw <= load_kw or soc >= max_soc - 1e-3:
+            mask[1] = False
 
+        # 2. Battery discharge (Action 3): load deficit required, usable battery charge required
+        if load_kw <= solar_kw or soc <= min_soc + 1e-3:
+            mask[3] = False
+
+        # 3. Grid charging (Action 2): impossible during outage, forbidden if solar surplus,
+        # and only permissible for hazard pre-charging when battery is below buffer
+        if is_outage:
+            mask[2] = False
+        else:
+            obs = self._get_observation()
+            hazard = float(obs[13]) if len(obs) > 13 else 0.0
+            if not (hazard >= 0.60 and soc < 0.75 and solar_kw <= load_kw):
+                mask[2] = False
+
+        # 4. Idle (Action 0): during an outage with an active deficit, idling causes a blackout
+        if is_outage and (load_kw > solar_kw) and (soc > min_soc + 1e-3):
+            mask[0] = False
+
+        # Fallback safety: ensure at least one action is valid
         if not np.any(mask):
             mask[0] = True
         return mask
@@ -316,25 +326,36 @@ class EnergyEnv(gym.Env):
         export_credit = flows["grid_export_kwh"] * self.grid.net_metering_rate
         unmet_penalty = flows["unmet_load_kwh"] * UNMET_LOAD_PENALTY_RATE_INR
 
-        # Physical invalid action penalty: teaches the neural network to avoid impossible actions
-        invalid_penalty = 0.0
-        if is_outage and action == 2:
-            invalid_penalty = 5.0  # Grid is down during blackout
-        elif solar_kw <= load_kw and action == 1:
-            invalid_penalty = 5.0  # Cannot charge from solar without surplus
-        elif solar_kw > load_kw and action == 3:
-            invalid_penalty = 5.0  # Cannot discharge when solar meets 100% load
-        elif solar_kw > load_kw and action == 2:
-            invalid_penalty = 5.0  # No parasitic grid import when solar is abundant
+        # 1. Base economic cash flow
+        reward = -import_cost + export_credit - unmet_penalty
 
-        # Solar storage incentive:
-        # Awards immediate shadow value for storing free solar into battery (+₹4.5/kWh vs +₹3.0/kWh export)
-        solar_storage_credit = flows["solar_to_battery_kwh"] * (self.grid.net_metering_rate + 1.5)
+        # 2. Solar storage incentive & missed-opportunity penalty
+        # Awards shadow value for storing free solar into battery vs exporting it
+        if flows["solar_to_battery_kwh"] > 0:
+            reward += flows["solar_to_battery_kwh"] * max(3.0, rate - self.grid.net_metering_rate + 1.0)
+        elif action == 0 and solar_kw > load_kw and soc_before < self.battery.max_soc - 0.05:
+            reward -= 4.0  # Missed opportunity penalty for dumping free solar to grid
 
-        # Penalty for unnecessary parasitic grid charging during normal non-outage conditions
-        parasitic_penalty = flows["grid_to_battery_kwh"] * 2.0 if not is_outage else 0.0
+        # 3. Deficit self-consumption incentive & parasitic import penalty
+        if not is_outage and flows["battery_to_load_kwh"] > 0:
+            reward += flows["battery_to_load_kwh"] * 3.0
+        elif not is_outage and action == 0 and load_kw > solar_kw and soc_before > self.battery.min_soc + 0.08:
+            reward -= 3.0  # Parasitic import penalty for buying grid power when battery has stored solar
 
-        reward = -import_cost + export_credit - unmet_penalty + solar_storage_credit - parasitic_penalty - invalid_penalty
+        # 4. Outage power delivery incentive & blackout neglect penalty
+        if is_outage and flows["battery_to_load_kwh"] > 0:
+            reward += flows["battery_to_load_kwh"] * 15.0
+        elif is_outage and action == 0 and soc_before > self.battery.min_soc + 0.02 and load_kw > 0.02:
+            reward -= 15.0  # Catastrophic penalty for causing a blackout when battery was available
+
+        # 5. Outage anticipation pre-charging vs parasitic charging
+        obs = self._get_observation()
+        hazard = float(obs[13]) if len(obs) > 13 else 0.0
+        if flows["grid_to_battery_kwh"] > 0:
+            if hazard >= 0.70 and soc_before < 0.60:
+                reward += flows["grid_to_battery_kwh"] * 5.0
+            else:
+                reward -= flows["grid_to_battery_kwh"] * 4.0
 
         # ── Update running state ───────────────────────────────────────────
         self._cumulative_units_this_month += flows["grid_import_kwh"]
