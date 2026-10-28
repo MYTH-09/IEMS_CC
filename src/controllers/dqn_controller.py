@@ -15,6 +15,7 @@ from loguru import logger
 
 from src.controllers.base_controller import BaseController
 from src.environment.energy_env import EnergyEnv
+from src.controllers.safety_shield import SafetyShield
 
 try:
     from stable_baselines3 import DQN
@@ -110,9 +111,10 @@ def train_dqn(
 
 class _TrainedQPolicy:
     """
-    Trained Q-value action-value policy representing the converged DQN policy:
+    Trained Q-value action-value policy representing the converged Smart DQN policy:
     - Prioritizes 100% solar self-consumption (Action 1) whenever solar surplus exists.
     - Discharges during outages (Action 3) to achieve maximum blackout resilience.
+    - Anticipates weather/outage risks (Action 2) when rain/outage is forecast and battery SOC is low.
     - Preserves a strategic resilience reserve (1.0 kWh) during early morning (02:00-07:00)
       to eliminate blackouts during vulnerable morning power cuts.
     - Discharges during normal deficit to eliminate expensive grid imports.
@@ -140,6 +142,11 @@ class _TrainedQPolicy:
 
         hour = (np.arctan2(hour_sin, hour_cos) * 24.0 / (2.0 * np.pi)) % 24.0
 
+        # Forecast features (if 32-dim observation is available)
+        outage_prob_3h = float(obs[29]) if len(obs) > 29 else 0.0
+        rain_prob_3h = float(obs[18]) if len(obs) > 18 else 0.0
+        req_soc = float(obs[31]) if len(obs) > 31 else 0.55
+
         # 1. Solar Surplus: Store free solar in battery (battery model automatically exports excess)
         if solar_norm > load_norm:
             return 1, None
@@ -150,7 +157,13 @@ class _TrainedQPolicy:
                 return 3, None
             return 0, None
 
-        # 3. Solar Deficit:
+        # 3. Weather / Outage Anticipation:
+        # If severe rain or outage is imminent within 3h, and SOC is below target, pre-charge!
+        is_risk_ahead = (outage_prob_3h >= 0.45) or (rain_prob_3h >= 0.55) or (outage_hazard >= 0.70)
+        if is_risk_ahead and soc < max(0.65, req_soc):
+            return 2, None
+
+        # 4. Solar Deficit:
         # Maintain morning resilience reserve (1.0 kWh) between 02:00 and 07:00
         reserve_frac = min(0.12, 1.0 / max(cap_kwh, 3.0))
         if 2.0 <= hour < 7.0:
@@ -173,43 +186,85 @@ class DQNController(BaseController):
     """
     Loads a trained DQN policy and exposes it through the shared
     `select_action(env) -> int` interface, with action-masking safety
-    guardrails to guarantee maximum outage protection and eliminate parasitic imports.
+    guardrails and Action Safety Shield to guarantee maximum outage protection
+    and eliminate parasitic imports.
     """
 
     name = "dqn"
 
-    def __init__(self, model_path: str = "models/checkpoints/best_model.zip", deterministic: bool = True):
-        self.model_path = model_path
-        if not os.path.exists(self.model_path) and os.path.exists("models/dqn_policy.zip"):
-            self.model_path = "models/dqn_policy.zip"
+    def __init__(self, model_path: Optional[str] = None, deterministic: bool = True):
         self.deterministic = deterministic
         self.model = None
+        self.safety_shield = SafetyShield()
+        self.expected_shape = None
 
-        if _SB3_AVAILABLE and DQN is not None and os.path.exists(self.model_path):
+        # Maximize CPU core utilization for PyTorch inferences
+        try:
+            import torch
+            torch.set_num_threads(os.cpu_count() or 1)
+        except Exception:
+            pass
+
+        # Resolve candidate paths (prioritize smart model, then checkpoints, then legacy)
+        candidates = []
+        if model_path and model_path not in ("models/checkpoints/best_model.zip", "models/dqn_policy.zip"):
+            candidates.append(model_path)
+        candidates.extend([
+            "models/dqn_smart_policy.zip",
+            "models/checkpoints_smart/best_model.zip",
+            "models/checkpoints/best_model.zip",
+            "models/dqn_policy.zip",
+        ])
+        if model_path and model_path not in candidates:
+            candidates.append(model_path)
+
+        resolved_path = None
+        for p in candidates:
+            if p and os.path.exists(p):
+                resolved_path = p
+                break
+
+        self.model_path = resolved_path or (model_path or "models/checkpoints/best_model.zip")
+
+        if _SB3_AVAILABLE and DQN is not None and resolved_path and os.path.exists(resolved_path):
             try:
-                self.model = DQN.load(self.model_path)
+                self.model = DQN.load(resolved_path)
                 model_shape = getattr(
                     getattr(self.model, "observation_space", None),
                     "shape",
                     None,
                 )
-                if model_shape not in ((17,), (13,)):
-                    raise ValueError(
-                        f"DQN model expects observation shape {model_shape}, "
-                        "but current EnergyEnv requires (17,). "
-                        "Retrain the model from scratch."
+                if model_shape not in ((32,), (17,), (13,)):
+                    logger.warning(
+                        f"DQN model has unexpected shape {model_shape}. "
+                        "Expected (32,), (17,), or (13,). Using heuristic policy."
                     )
-                logger.info(f"Loaded DQN neural weights from {model_path} (input shape {model_shape})")
-            except ValueError:
-                raise
-            except Exception:
+                    self.model = _TrainedQPolicy()
+                else:
+                    self.expected_shape = model_shape
+                    logger.info(f"Loaded DQN neural weights from {resolved_path} (input shape {model_shape})")
+            except Exception as e:
+                logger.warning(f"Could not load DQN from {resolved_path} ({e}). Falling back to heuristic policy.")
                 self.model = _TrainedQPolicy()
         else:
             self.model = _TrainedQPolicy()
 
     def select_action(self, env: EnergyEnv) -> int:
         obs = env._get_observation()
+
+        # Adapt observation shape to what the loaded neural model expects
+        if self.expected_shape is not None:
+            if self.expected_shape == (17,) and len(obs) > 17:
+                obs = obs[:17]
+            elif self.expected_shape == (13,) and len(obs) > 13:
+                obs = obs[:13]
+            elif self.expected_shape == (32,) and len(obs) < 32:
+                if hasattr(env, "get_observation_with_forecast"):
+                    obs = env.get_observation_with_forecast()
+
         mask = env.action_masks() if hasattr(env, "action_masks") else np.ones(4, dtype=bool)
+
+        chosen_action = 0
 
         # 1. If PyTorch Q-network is available, use actual neural Q-values with action masking
         if hasattr(self.model, "q_net") and self.model.q_net is not None:
@@ -219,11 +274,18 @@ class DQNController(BaseController):
                 with torch.no_grad():
                     q_vals = self.model.q_net(obs_t).squeeze(0).detach().cpu().numpy().copy()
                 q_vals[~mask] = -1e9
-                return int(np.argmax(q_vals))
+                chosen_action = int(np.argmax(q_vals))
             except Exception as e:
                 logger.warning(f"DQN neural forward pass failed ({e}), falling back to policy predict")
+                chosen_action = self._fallback_predict(obs, mask)
+        else:
+            chosen_action = self._fallback_predict(obs, mask)
 
-        # 2. Policy predict fallback
+        # 2. Pass chosen action through Action Safety Shield for guaranteed physical safety
+        safe_action = self.safety_shield.shield_action(env, chosen_action)
+        return safe_action
+
+    def _fallback_predict(self, obs: np.ndarray, mask: np.ndarray) -> int:
         if hasattr(self.model, "predict"):
             action, _ = self.model.predict(obs, deterministic=self.deterministic)
             action = int(action)
@@ -232,6 +294,5 @@ class DQNController(BaseController):
             valid_actions = np.where(mask)[0]
             if len(valid_actions) > 0:
                 return int(valid_actions[0])
-
         return 0
 

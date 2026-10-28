@@ -216,7 +216,7 @@ class SizingRequest(BaseModel):
     subsidy_eligible: bool = True
     depth: Literal["quick", "thorough"] = "quick"
     avg_rate_inr_per_kwh: float = 5.0   # rough rate to convert bill → units for the initial profile target
-    n_workers: Optional[int] = None     # None = auto-detect CPU count, capped at 8
+    n_workers: Optional[int] = None     # None = auto-detect all available CPU cores
     validate_candidates_flag: bool = True   # run the real rule-based/MPC/DQN spot-check (§8.4/validate_candidates.py)
 
 
@@ -354,13 +354,15 @@ def size_system(req: SizingRequest) -> dict:
     )
     solar_curve = FixedSolarCurve(solar_kw_per_kwp)
 
+    workers = req.n_workers if req.n_workers is not None else (os.cpu_count() or 1)
+
     if req.depth == "quick":
         panel_sizes = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0]
         battery_sizes = [0.0, 5.0, 7.5, 10.0, 15.0, 20.0]
         df = run_grid_search(
             load_kw=load_kw, solar_kw_per_kwp=solar_kw_per_kwp, timestamps=timestamps,
             grid=grid, panel_sizes_kw=panel_sizes, battery_sizes_kwh=battery_sizes,
-            financial_config=financial_config, seed=42, n_workers=req.n_workers,
+            financial_config=financial_config, seed=42, n_workers=workers,
         )
         # The no-solar baseline determines "savings vs no solar" for every
         # candidate — computed directly, not via a self-referential
@@ -383,13 +385,13 @@ def size_system(req: SizingRequest) -> dict:
         #     load_kw=load_kw, timestamps=timestamps, grid=grid,
         #     solar_curve_fn=solar_curve,   # picklable — safe for n_workers > 1, unlike the old lambda
         #     financial_config=financial_config, baseline_annual_cost_inr=baseline_cost,
-        #     pop_size=12, n_generations=8, episode_days=180, seed=42, n_workers=req.n_workers,
+        #     pop_size=12, n_generations=8, episode_days=180, seed=42, n_workers=workers,
         # )
         pareto = run_nsga2(
             load_kw=load_kw, timestamps=timestamps, grid=grid,
             solar_curve_fn=solar_curve,
             financial_config=financial_config, baseline_annual_cost_inr=baseline_cost,
-            pop_size=40, n_generations=50, episode_days=365, seed=42, n_workers=req.n_workers,
+            pop_size=40, n_generations=50, episode_days=365, seed=42, n_workers=workers,
         )
         # run_nsga2 now computes annual_savings_inr directly (re-simulates
         # each final front point once) — no placeholder/approximation needed.
@@ -400,7 +402,8 @@ def size_system(req: SizingRequest) -> dict:
         if len(df) == 0:
             raise HTTPException(400, "No system fits within the given budget cap.")
 
-    recs = top_recommendations(df, n=1)
+    daily_kwh = req.monthly_bill_inr / req.avg_rate_inr_per_kwh / 30.0
+    recs = top_recommendations(df, n=1, target_daily_kwh=daily_kwh)
     total_outage_load_kwh = compute_total_outage_load_kwh(load_kw, timestamps, grid)
 
     result = {

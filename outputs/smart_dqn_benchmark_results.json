@@ -1,0 +1,195 @@
+{
+  "rain_at_6pm_challenge": {
+    "Smart DQN (Forecast-Aware)": {
+      "reward": 324.88,
+      "grid_import_kwh": 2.3,
+      "grid_export_kwh": 34.53,
+      "unmet_load_kwh": 0.1,
+      "total_cost_inr": -77.14,
+      "avg_soc_pct": 55.4,
+      "min_soc_pct": 10.0,
+      "action_distribution": {
+        "idle": 19,
+        "charge_solar": 88,
+        "charge_grid": 1,
+        "discharge": 84
+      },
+      "soc_at_storm_pct": 85.1
+    },
+    "Legacy DQN (17-dim)": {
+      "reward": 336.51,
+      "grid_import_kwh": 3.52,
+      "grid_export_kwh": 34.73,
+      "unmet_load_kwh": 0.0,
+      "total_cost_inr": -75.04,
+      "avg_soc_pct": 58.7,
+      "min_soc_pct": 12.4,
+      "action_distribution": {
+        "idle": 0,
+        "charge_solar": 88,
+        "charge_grid": 4,
+        "discharge": 100
+      },
+      "soc_at_storm_pct": 85.1
+    },
+    "Rule-Based": {
+      "reward": 323.29,
+      "grid_import_kwh": 1.34,
+      "grid_export_kwh": 34.53,
+      "unmet_load_kwh": 0.1,
+      "total_cost_inr": -80.37,
+      "avg_soc_pct": 54.6,
+      "min_soc_pct": 10.0,
+      "action_distribution": {
+        "idle": 19,
+        "charge_solar": 88,
+        "charge_grid": 0,
+        "discharge": 85
+      },
+      "soc_at_storm_pct": 85.1
+    }
+  },
+  "generalization_benchmarks": {
+    "seed_888_scale_0.9": {
+      "Smart DQN (Forecast-Aware)": {
+        "reward": 3325.78,
+        "grid_import_kwh": 0.0,
+        "grid_export_kwh": 113.18,
+        "unmet_load_kwh": 0.0,
+        "total_cost_inr": -282.94,
+        "avg_soc_pct": 62.9,
+        "min_soc_pct": 17.3,
+        "action_distribution": {
+          "idle": 0,
+          "charge_solar": 928,
+          "charge_grid": 0,
+          "discharge": 1952
+        }
+      },
+      "Legacy DQN (17-dim)": {
+        "reward": 3325.78,
+        "grid_import_kwh": 0.0,
+        "grid_export_kwh": 113.18,
+        "unmet_load_kwh": 0.0,
+        "total_cost_inr": -282.94,
+        "avg_soc_pct": 62.9,
+        "min_soc_pct": 17.3,
+        "action_distribution": {
+          "idle": 0,
+          "charge_solar": 928,
+          "charge_grid": 0,
+          "discharge": 1952
+        }
+      },
+      "Rule-Based": {
+        "reward": 3325.78,
+        "grid_import_kwh": 0.0,
+        "grid_export_kwh": 113.18,
+        "unmet_load_kwh": 0.0,
+        "total_cost_inr": -282.94,
+        "avg_soc_pct": 62.9,
+        "min_soc_pct": 17.3,
+        "action_distribution": {
+          "idle": 0,
+          "charge_solar": 928,
+          "charge_grid": 0,
+          "discharge": 1952
+        }
+      }
+    },
+    "seed_777_scale_1.4": {
+      "Smart DQN (Forecast-Aware)": {
+        "reward": 3897.94,
+        "grid_import_kwh": 62.91,
+        "grid_export_kwh": 23.49,
+        "unmet_load_kwh": 4.5,
+        "total_cost_inr": 219.6,
+        "avg_soc_pct": 45.7,
+        "min_soc_pct": 10.0,
+        "action_distribution": {
+          "idle": 162,
+          "charge_solar": 837,
+          "charge_grid": 54,
+          "discharge": 1827
+        }
+      },
+      "Legacy DQN (17-dim)": {
+        "reward": 3213.44,
+        "grid_import_kwh": 51.28,
+        "grid_export_kwh": 23.5,
+        "unmet_load_kwh": 10.53,
+        "total_cost_inr": 271.0,
+        "avg_soc_pct": 44.6,
+        "min_soc_pct": 10.0,
+        "action_distribution": {
+          "idle": 425,
+          "charge_solar": 837,
+          "charge_grid": 0,
+          "discharge": 1618
+        }
+      },
+      "Rule-Based": {
+        "reward": 3179.24,
+        "grid_import_kwh": 51.25,
+        "grid_export_kwh": 23.48,
+        "unmet_load_kwh": 10.53,
+        "total_cost_inr": 270.97,
+        "avg_soc_pct": 44.6,
+        "min_soc_pct": 10.0,
+        "action_distribution": {
+          "idle": 421,
+          "charge_solar": 837,
+          "charge_grid": 0,
+          "discharge": 1622
+        }
+      }
+    },
+    "seed_666_scale_0.7": {
+      "Smart DQN (Forecast-Aware)": {
+        "reward": 2733.84,
+        "grid_import_kwh": 0.01,
+        "grid_export_kwh": 159.53,
+        "unmet_load_kwh": 0.71,
+        "total_cost_inr": -388.19,
+        "avg_soc_pct": 70.7,
+        "min_soc_pct": 10.0,
+        "action_distribution": {
+          "idle": 11,
+          "charge_solar": 981,
+          "charge_grid": 0,
+          "discharge": 1888
+        }
+      },
+      "Legacy DQN (17-dim)": {
+        "reward": 2771.28,
+        "grid_import_kwh": 0.82,
+        "grid_export_kwh": 159.56,
+        "unmet_load_kwh": 0.0,
+        "total_cost_inr": -396.15,
+        "avg_soc_pct": 70.8,
+        "min_soc_pct": 10.3,
+        "action_distribution": {
+          "idle": 0,
+          "charge_solar": 981,
+          "charge_grid": 1,
+          "discharge": 1898
+        }
+      },
+      "Rule-Based": {
+        "reward": 2733.84,
+        "grid_import_kwh": 0.01,
+        "grid_export_kwh": 159.53,
+        "unmet_load_kwh": 0.71,
+        "total_cost_inr": -388.19,
+        "avg_soc_pct": 70.7,
+        "min_soc_pct": 10.0,
+        "action_distribution": {
+          "idle": 11,
+          "charge_solar": 981,
+          "charge_grid": 0,
+          "discharge": 1888
+        }
+      }
+    }
+  }
+}

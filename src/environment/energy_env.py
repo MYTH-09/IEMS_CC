@@ -59,6 +59,7 @@ from loguru import logger
 
 from src.battery.battery_model import BatteryModel
 from src.grid.grid_model import GridModel
+from src.environment.forecast_provider import ForecastProvider
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -116,6 +117,8 @@ class EnergyEnv(gym.Env):
         seed: Optional[int] = None,
         obs_power_norm_kw: float = 15.0,
         additional_households: Optional[list[dict]] = None,
+        use_forecast: bool = True,
+        forecast_provider: Optional[ForecastProvider] = None,
     ):
         """
         Parameters
@@ -151,26 +154,37 @@ class EnergyEnv(gym.Env):
 
         # ── Build the household pool (primary + any additional) ────────────
         self.battery_config = dict(battery_config or {})
+        ts_primary = pd.DatetimeIndex(timestamps)
         primary = {
             "load_kw": np.asarray(load_kw, dtype=np.float32),
             "solar_kw": np.asarray(solar_kw, dtype=np.float32),
-            "timestamps": pd.DatetimeIndex(timestamps),
+            "timestamps": ts_primary,
             "battery_config": dict(self.battery_config),
+            "hours": np.asarray(ts_primary.hour, dtype=np.float32),
+            "minutes": np.asarray(ts_primary.minute, dtype=np.float32),
+            "months": np.asarray(ts_primary.month, dtype=np.float32),
+            "dayofweek": np.asarray(ts_primary.dayofweek, dtype=np.int32),
         }
-        self._household_pool: list[dict] = [primary] + [
-            {**household, "battery_config": dict(
-                household.get("battery_config", self.battery_config)
-            )}
-            for household in (additional_households or [])
-        ]
+        self._household_pool: list[dict] = [primary]
+        for h in (additional_households or []):
+            h_ts = pd.DatetimeIndex(h["timestamps"])
+            self._household_pool.append({
+                **h,
+                "timestamps": h_ts,
+                "battery_config": dict(h.get("battery_config", self.battery_config)),
+                "hours": np.asarray(h_ts.hour, dtype=np.float32),
+                "minutes": np.asarray(h_ts.minute, dtype=np.float32),
+                "months": np.asarray(h_ts.month, dtype=np.float32),
+                "dayofweek": np.asarray(h_ts.dayofweek, dtype=np.int32),
+            })
 
         self.episode_steps = int(episode_days * SLOTS_PER_DAY)
         for i, h in enumerate(self._household_pool):
             assert len(h["load_kw"]) == len(h["solar_kw"]) == len(h["timestamps"]), \
                 f"Household {i}: load_kw, solar_kw, and timestamps must be the same length"
-            assert len(h["load_kw"]) > self.episode_steps, (
-                f"Household {i} data series ({len(h['load_kw'])} steps) must be longer "
-                f"than one episode ({self.episode_steps} steps) to allow random start sampling."
+            assert len(h["load_kw"]) >= self.episode_steps, (
+                f"Household {i} data series ({len(h['load_kw'])} steps) must be at least as long "
+                f"as one episode ({self.episode_steps} steps)."
             )
 
         # Active household's data (selected fresh on each reset()) —
@@ -179,6 +193,11 @@ class EnergyEnv(gym.Env):
         self.load_kw    = primary["load_kw"]
         self.solar_kw   = primary["solar_kw"]
         self.timestamps = primary["timestamps"]
+        self._hours     = primary["hours"]
+        self._minutes   = primary["minutes"]
+        self._months    = primary["months"]
+        self._dayofweek = primary["dayofweek"]
+        self._last_is_outage = False
         self.dt_hours   = dt_hours
 
         self.battery = BatteryModel(**self.battery_config)
@@ -191,20 +210,37 @@ class EnergyEnv(gym.Env):
         self._cum_units_norm_cap = 1000.0
 
         self._rng = np.random.default_rng(seed)
+        self.use_forecast = use_forecast
+        self.forecast_provider = forecast_provider or (
+            ForecastProvider(training_mode=False, power_norm_kw=self._max_power_kw, seed=seed)
+            if self.use_forecast else None
+        )
 
         # ── Gym spaces ───────────────────────────────────────────────────────
         self.action_space = spaces.Discrete(4)
 
-        # 17-dimensional observation space:
+        # Base 17-dimensional observation space:
         # [0] solar_norm, [1] load_norm, [2] net_power_norm,
         # [3] battery_soc, [4] battery_capacity_norm, [5] autonomy_hours_norm,
         # [6] marginal_rate_norm, [7] rate_ratio,
         # [8] hour_sin, [9] hour_cos, [10] is_weekend,
         # [11] cum_units_norm, [12] is_outage, [13] outage_hazard, [14] month_sin,
         # [15] yesterday_solar_norm, [16] yesterday_load_norm
-        obs_low  = np.array([0, 0, -1, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, -1, 0, 0], dtype=np.float32)
-        obs_high = np.array([1, 1,  1, 1, 1, 1, 1, 1,  1,  1, 1, 1, 1, 1,  1, 1, 1], dtype=np.float32)
-        self.observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
+        base_low  = np.array([0, 0, -1, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0, -1, 0, 0], dtype=np.float32)
+        base_high = np.array([1, 1,  1, 1, 1, 1, 1, 1,  1,  1, 1, 1, 1, 1,  1, 1, 1], dtype=np.float32)
+
+        if self.use_forecast:
+            # Forecast features (15 features, total 32 dimensions):
+            # [17-19] rain_prob_1h/3h/6h, [20-22] cloud_cover_1h/3h/6h,
+            # [23-25] solar_forecast_1h/3h/6h, [26-27] load_forecast_3h/6h,
+            # [28-30] outage_prob_1h/3h/6h, [31] required_soc
+            fc_low = np.zeros(15, dtype=np.float32)
+            fc_high = np.ones(15, dtype=np.float32)
+            obs_low = np.concatenate([base_low, fc_low])
+            obs_high = np.concatenate([base_high, fc_high])
+            self.observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
+        else:
+            self.observation_space = spaces.Box(low=base_low, high=base_high, dtype=np.float32)
 
         # ── Episode state ────────────────────────────────────────────────────
         self._start_idx: int = 0
@@ -253,13 +289,19 @@ class EnergyEnv(gym.Env):
             mask[3] = False
 
         # 3. Grid charging (Action 2): impossible during outage, forbidden if solar surplus,
-        # and only permissible for hazard pre-charging when battery is below buffer
+        # and only permissible for hazard/rain pre-charging when battery is below target
         if is_outage:
             mask[2] = False
         else:
             obs = self._get_observation()
             hazard = float(obs[13]) if len(obs) > 13 else 0.0
-            if not (hazard >= 0.60 and soc < 0.75 and solar_kw <= load_kw):
+            outage_prob = float(obs[29]) if len(obs) > 29 else 0.0
+            rain_prob = float(obs[18]) if len(obs) > 18 else 0.0
+            req_soc = float(obs[31]) if len(obs) > 31 else 0.60
+
+            is_risk = (hazard >= 0.60) or (outage_prob >= 0.45) or (rain_prob >= 0.50)
+            target_soc = max(0.70, req_soc) if (outage_prob >= 0.45 or rain_prob >= 0.50) else 0.75
+            if not (is_risk and soc < target_soc and solar_kw <= load_kw):
                 mask[2] = False
 
         # 4. Idle (Action 0): during an outage with an active deficit, idling causes a blackout
@@ -287,12 +329,17 @@ class EnergyEnv(gym.Env):
         self.load_kw    = household["load_kw"]
         self.solar_kw   = household["solar_kw"]
         self.timestamps = household["timestamps"]
+        self._hours     = household["hours"]
+        self._minutes   = household["minutes"]
+        self._months    = household["months"]
+        self._dayofweek = household["dayofweek"]
+        self._last_is_outage = False
         self.battery_config = dict(household["battery_config"])
         self.battery = BatteryModel(**self.battery_config)
 
         # Sample a random valid start index within the selected household's series
-        max_start = len(self.load_kw) - self.episode_steps - 1
-        self._start_idx = int(self._rng.integers(0, max_start + 1))
+        max_start = max(0, len(self.load_kw) - self.episode_steps)
+        self._start_idx = int(self._rng.integers(0, max_start + 1)) if max_start > 0 else 0
         self._step_idx  = 0
         self._data_idx  = self._start_idx
 
@@ -316,6 +363,7 @@ class EnergyEnv(gym.Env):
         load_kw   = float(self.load_kw[self._data_idx])
         solar_kw  = float(self.solar_kw[self._data_idx])
         is_outage = self.grid.is_outage(ts)
+        self._last_is_outage = is_outage
         soc_before = float(self.battery.soc)
 
         flows = self._apply_action(action, load_kw, solar_kw, is_outage)
@@ -345,17 +393,31 @@ class EnergyEnv(gym.Env):
         # 4. Outage power delivery incentive & blackout neglect penalty
         if is_outage and flows["battery_to_load_kwh"] > 0:
             reward += flows["battery_to_load_kwh"] * 15.0
-        elif is_outage and action == 0 and soc_before > self.battery.min_soc + 0.02 and load_kw > 0.02:
+        elif is_outage and action == 0 and load_kw > solar_kw and soc_before > self.battery.min_soc + 0.02:
             reward -= 15.0  # Catastrophic penalty for causing a blackout when battery was available
 
-        # 5. Outage anticipation pre-charging vs parasitic charging
-        obs = self._get_observation()
-        hazard = float(obs[13]) if len(obs) > 13 else 0.0
-        if flows["grid_to_battery_kwh"] > 0:
-            if hazard >= 0.70 and soc_before < 0.60:
-                reward += flows["grid_to_battery_kwh"] * 5.0
-            else:
-                reward -= flows["grid_to_battery_kwh"] * 4.0
+        # 5. Outage/storm anticipation pre-charging vs parasitic charging
+        if flows["grid_to_battery_kwh"] > 0 or self.use_forecast:
+            obs = self._get_observation()
+            hazard = float(obs[13]) if len(obs) > 13 else 0.0
+            outage_prob = float(obs[29]) if len(obs) > 29 else 0.0
+            rain_prob = float(obs[18]) if len(obs) > 18 else 0.0
+            req_soc = float(obs[31]) if len(obs) > 31 else 0.55
+            is_risk = (hazard >= 0.70) or (outage_prob >= 0.45) or (rain_prob >= 0.55)
+
+            if flows["grid_to_battery_kwh"] > 0:
+                if is_risk and soc_before < max(0.65, req_soc):
+                    reward += flows["grid_to_battery_kwh"] * 5.0
+                else:
+                    reward -= flows["grid_to_battery_kwh"] * 4.0
+
+            # 6. Future readiness incentive & unpreparedness penalty
+            if self.use_forecast and is_risk:
+                soc_after = float(self.battery.soc)
+                if soc_after >= req_soc:
+                    reward += 1.5 * max(0.0, 1.0 - (soc_after - req_soc))
+                elif soc_after < req_soc - 0.15 and not is_outage and action == 0 and load_kw > 0.05:
+                    reward -= 2.0  # penalty for idling when facing impending storm/outage deficit
 
         # ── Update running state ───────────────────────────────────────────
         self._cumulative_units_this_month += flows["grid_import_kwh"]
@@ -495,16 +557,16 @@ class EnergyEnv(gym.Env):
             self.load_kw[source_idx] / self._max_power_kw, 0, 1
         )
 
-        hour = ts.hour + ts.minute / 60.0
+        hour = float(self._hours[idx]) + float(self._minutes[idx]) / 60.0
         hour_sin = np.sin(2 * np.pi * hour / 24.0)
         hour_cos = np.cos(2 * np.pi * hour / 24.0)
-        month_sin = np.sin(2 * np.pi * ts.month / 12.0)
+        month_sin = np.sin(2 * np.pi * float(self._months[idx]) / 12.0)
 
-        is_weekend = 1.0 if ts.dayofweek >= 5 else 0.0
+        is_weekend = 1.0 if self._dayofweek[idx] >= 5 else 0.0
         cum_units_norm = np.clip(
             self._cumulative_units_this_month / self._cum_units_norm_cap, 0, 1
         )
-        is_outage = 1.0 if self.grid.is_outage(ts) else 0.0
+        is_outage = 1.0 if getattr(self, "_last_is_outage", False) else 0.0
         battery_capacity_norm = np.clip(
             self.battery.capacity_kwh / MAX_SIZING_BATTERY_KWH, 0, 1
         )
@@ -519,9 +581,9 @@ class EnergyEnv(gym.Env):
         rate_ratio = float(np.clip(current_rate / (self.grid.net_metering_rate + 1e-4) / 3.0, 0, 1))
 
         # Local outage hazard risk index
-        outage_hazard = 1.0 if int(ts.hour) in getattr(self.grid, "_outage_peak_hours", [10, 14, 18, 22]) else 0.2
+        outage_hazard = 1.0 if int(self._hours[idx]) in getattr(self.grid, "_outage_peak_hours", [10, 14, 18, 22]) else 0.2
 
-        obs = np.array([
+        base_obs = np.array([
             solar_norm, load_norm, net_power_norm,
             self.battery.soc, battery_capacity_norm, autonomy_hours_norm,
             marginal_rate_norm, rate_ratio,
@@ -529,10 +591,28 @@ class EnergyEnv(gym.Env):
             cum_units_norm, is_outage, outage_hazard, month_sin,
             yesterday_solar_norm, yesterday_load_norm,
         ], dtype=np.float32)
-        return obs
+
+        if self.use_forecast and self.forecast_provider is not None:
+            fc_vec = self.forecast_provider.get_forecast_vector(self, idx)
+            return np.concatenate([base_obs, fc_vec]).astype(np.float32)
+
+        return base_obs
+
+    def get_observation_with_forecast(self) -> np.ndarray:
+        """
+        Explicitly returns the full 32-dim observation including weather & outage forecasts,
+        even if the environment was initialized in legacy mode.
+        """
+        idx = min(self._data_idx, len(self.load_kw) - 1)
+        base = self._get_observation()
+        if len(base) >= 32:
+            return base
+        provider = self.forecast_provider or ForecastProvider(power_norm_kw=self._max_power_kw)
+        fc_vec = provider.get_forecast_vector(self, idx)
+        return np.concatenate([base[:17], fc_vec]).astype(np.float32)
 
     def _get_info(self) -> dict:
-        return {
+        info = {
             "timestamp": self.timestamps[min(self._data_idx, len(self.timestamps)-1)],
             "battery_soc": self.battery.soc,
             "cumulative_units_this_month": self._cumulative_units_this_month,
@@ -541,6 +621,16 @@ class EnergyEnv(gym.Env):
             "episode_unmet_load_kwh": self.episode_unmet_load_kwh,
             "episode_cost_inr": self.episode_cost_inr,
         }
+        if self.use_forecast and self.forecast_provider is not None:
+            fc = self.forecast_provider.get_forecast(self, min(self._data_idx, len(self.load_kw) - 1))
+            info.update({
+                "rain_probability_1h": fc["rain_probability_1h"],
+                "rain_probability_3h": fc["rain_probability_3h"],
+                "outage_probability_3h": fc["outage_probability_3h"],
+                "required_soc": fc["required_soc"],
+                "forecast_deficit_3h_kwh": fc["forecast_deficit_3h_kwh"],
+            })
+        return info
 
     def __repr__(self) -> str:
         return (

@@ -300,9 +300,10 @@ async def stage_grid_search(params: dict, get_upstream: Callable) -> dict:
         battery_sizes = [0.0, 5.0, 7.5, 10.0, 15.0, 20.0]
         financial_config = params["financial_config"]
 
+        workers = params.get("n_workers") or os.cpu_count() or 1
         df = run_grid_search(load_kw, solar_kw_per_kwp, timestamps, grid,
                               panel_sizes, battery_sizes, financial_config,
-                              seed=42, n_workers=params.get("n_workers"))
+                              seed=42, n_workers=workers)
 
         # No-solar baseline, computed directly (not self-referentially through
         # run_grid_search — see app.py's compute_baseline_annual_cost docstring
@@ -313,13 +314,12 @@ async def stage_grid_search(params: dict, get_upstream: Callable) -> dict:
             panel_kw=0.0, battery_kwh=0.0, grid=grid, episode_days=365, seed=42,
         )
 
-        recs = top_recommendations(df, n=1)
+        target_daily_kwh = load.get("daily_kwh_target")
+        recs = top_recommendations(df, n=1, target_daily_kwh=target_daily_kwh)
         extra = ["subsidy_amount_inr", "irr_pct", "outage_steps_covered"]
 
-        # The system fed to the controller tabs (rule_based/mpc/dqn) is the BEST
-        # OUTAGE PROTECTION candidate (lowest annual_unmet_load_kwh), not best NPV —
-        # the controller tabs exist specifically to prove outage resilience, so they
-        # should simulate the system actually chosen for that purpose.
+        # The system fed to the controller tabs (rule_based/mpc/dqn) is the BEST BACKUP
+        # candidate with realistic residential storage (matches the UI card highlighted for simulation).
         sized_row = recs["best_backup"].iloc[0]
 
         return {
@@ -370,17 +370,19 @@ async def stage_ga(params: dict, get_upstream: Callable) -> dict:
                                           episode_days=365, seed=42)
         baseline_cost = baseline["annual_cost_inr"]
 
+        workers = params.get("n_workers") or os.cpu_count() or 1
         pareto = run_nsga2(load_kw=load_kw, timestamps=timestamps, grid=grid,
                             solar_curve_fn=_FixedSolarCurve(solar_per_kwp), financial_config=params["financial_config"],
                             baseline_annual_cost_inr=baseline_cost,
-                            pop_size=params.get("ga_pop_size", 12), n_generations=params.get("ga_n_gen", 8),
-                            episode_days=180, seed=42, n_workers=params.get("n_workers"))
+                            pop_size=params.get("ga_pop_size", 30), n_generations=params.get("ga_n_gen", 30),
+                            episode_days=180, seed=42, n_workers=workers)
 
-        recs = top_recommendations(pareto, n=1)
+        target_daily_kwh = load.get("daily_kwh_target")
+        recs = top_recommendations(pareto, n=1, target_daily_kwh=target_daily_kwh)
         extra = ["tilt_deg", "azimuth_deg"]
 
         # Same rationale as stage_grid_search: controller tabs simulate the
-        # BEST OUTAGE PROTECTION candidate, not best NPV.
+        # BEST BACKUP candidate with realistic residential storage (matches the UI card highlighted for simulation).
         sized_row = recs["best_backup"].iloc[0]
 
         return {
@@ -458,7 +460,8 @@ def _run_controller_demo(load, solar, params, controller, panel_kw, battery_kwh)
                            max_discharge_rate_kw=min(3.0, max(battery_kwh, 0.01)),
                            round_trip_efficiency=0.90, min_soc=0.10, max_soc=0.95, initial_soc=0.50)
     env = EnergyEnv(load_kw=load_kw, solar_kw=solar_kw, timestamps=timestamps,
-                     battery_config=battery_config, grid=grid, episode_days=_DEMO_EPISODE_DAYS, seed=42)
+                     battery_config=battery_config, grid=grid, episode_days=_DEMO_EPISODE_DAYS, seed=42,
+                     use_forecast=True)
     obs, info = env.reset(seed=42)
     controller.reset()
 

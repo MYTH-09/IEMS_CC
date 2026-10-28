@@ -98,6 +98,7 @@ def simulate_system_size(
         load_kw=load_kw, solar_kw=solar_kw, timestamps=timestamps,
         battery_config=battery_config, grid=grid,
         episode_days=episode_days, seed=seed,
+        use_forecast=False,
     )
     controller = RuleBasedController()
 
@@ -115,12 +116,9 @@ def simulate_system_size(
         else:
             action = controller.select_action(env)
 
-        idx_before = env._data_idx
-        was_outage = env.grid.is_outage(env.timestamps[idx_before])
-
         obs, reward, terminated, truncated, step_info = env.step(action)
 
-        if was_outage and step_info["unmet_load_kwh"] == 0.0 and step_info["battery_to_load_kwh"] > 0:
+        if step_info["is_outage"] and step_info["unmet_load_kwh"] == 0.0 and step_info["battery_to_load_kwh"] > 0:
             outage_steps_covered += 1
 
     return {
@@ -234,7 +232,7 @@ def run_grid_search(
         total_capex_inr, payback_years, npv_25yr_inr, irr_pct
     """
     if n_workers is None:
-        n_workers = min(os.cpu_count() or 1, 8)
+        n_workers = os.cpu_count() or 1
 
     combos = [(p, b) for p in panel_sizes_kw for b in battery_sizes_kwh]
     total = len(combos)
@@ -308,42 +306,104 @@ def run_grid_search(
     return df
 
 
-def top_recommendations(df: pd.DataFrame, n: int = 3) -> dict:
+def top_recommendations(
+    df: pd.DataFrame,
+    n: int = 3,
+    target_daily_kwh: Optional[float] = None,
+) -> dict:
     """
-    Extract top candidates by three different priorities, since there's
-    no single "optimal" answer — a customer might prioritize any of these.
+    Extract top candidates by three distinct, practical priorities:
+
+    1. Fastest Payback: system with the lowest positive capital recovery period.
+    2. Best 25yr NPV: system maximizing lifetime net financial savings, guaranteed
+       to be physically distinct from Fastest Payback (different panel or battery size).
+    3. Best Outage Backup: practical residential microgrid system providing robust
+       outage autonomy (sized realistically for residential use, e.g. 4-8 hrs critical
+       backup ~ 25-45% of daily consumption) without absurd industrial-scale CAPEX.
 
     Works with BOTH grid_search's output schema (has outage_steps_covered)
-    AND nsga2_sizing's output schema (has annual_unmet_load_kwh only) —
-    the NSGA-II Pareto front never had an outage_steps_covered column,
-    so calling this with "thorough" depth's DataFrame previously raised
-    KeyError: 'outage_steps_covered'.
+    AND nsga2_sizing's output schema (has annual_unmet_load_kwh).
 
     Returns
     -------
     dict with keys 'fastest_payback', 'best_npv', 'best_backup', each a
     pd.DataFrame of the top `n` rows for that criterion.
     """
-    # Exclude systems that never pay back (inf) from the payback ranking
-    payback_candidates = df[np.isfinite(df["payback_years"])]
+    if df.empty:
+        return {"fastest_payback": df, "best_npv": df, "best_backup": df}
 
-    if "annual_unmet_load_kwh" in df.columns:
-        # Lower unmet load = better backup coverage. Present in both
-        # grid_search's and nsga2_sizing's output — the reliable choice.
-        best_backup = df.nsmallest(n, "annual_unmet_load_kwh")
-    elif "outage_steps_covered" in df.columns:
-        # Fallback for any caller whose DataFrame only has this older
-        # grid_search-specific column (higher = better here).
-        best_backup = df.nlargest(n, "outage_steps_covered")
+    # 1. Fastest Payback: system with lowest positive payback period
+    payback_candidates = df[np.isfinite(df["payback_years"]) & (df["payback_years"] > 0)]
+    if payback_candidates.empty:
+        payback_candidates = df
+    fastest_payback = payback_candidates.nsmallest(n, "payback_years")
+
+    # 2. Best Outage Backup: any system with a meaningful battery — no artificial upper cap.
+    # We deliberately removed the old max_practical_battery=10.0 hard limit: the search grid
+    # explicitly tests 15 and 20 kWh packs, and silently discarding them here meant the actual
+    # maximum-outage-coverage system was never surfaced as "best backup". Let the simulation
+    # data decide — if a larger pack truly wins on outage coverage, it should win.
+    min_practical_battery = 2.0
+
+    # Filter for candidates with a meaningful battery (no-battery and micro-battery systems
+    # cannot provide outage backup, so they are always excluded from this pool).
+    backup_pool = df[df["battery_kwh"] >= min_practical_battery]
+    if backup_pool.empty:
+        backup_pool = df[df["battery_kwh"] > 0.5]
+    if backup_pool.empty:
+        backup_pool = df
+
+    if "outage_steps_covered" in backup_pool.columns:
+        best_backup = backup_pool.sort_values(
+            by=["outage_steps_covered", "annual_unmet_load_kwh", "npv_25yr_inr"],
+            ascending=[False, True, False]
+        ).head(n)
+    elif "annual_unmet_load_kwh" in backup_pool.columns:
+        best_backup = backup_pool.sort_values(
+            by=["annual_unmet_load_kwh", "npv_25yr_inr"],
+            ascending=[True, False]
+        ).head(n)
     else:
-        raise KeyError(
-            "top_recommendations(): DataFrame has neither "
-            "'annual_unmet_load_kwh' nor 'outage_steps_covered' — "
-            "cannot determine a backup-coverage ranking."
+        best_backup = backup_pool.head(n)
+
+    # 3. Best 25yr NPV: system that maximizes lifetime financial savings.
+    # Must be physically distinct from fastest_payback AND best_backup so each card
+    # provides an actionable, distinct choice and best_backup is never outperformed on backup.
+    fp_panel = float(fastest_payback.iloc[0]["panel_kw"]) if not fastest_payback.empty else -1.0
+    fp_batt = float(fastest_payback.iloc[0]["battery_kwh"]) if not fastest_payback.empty else -1.0
+    bb_panel = float(best_backup.iloc[0]["panel_kw"]) if not best_backup.empty else -1.0
+    bb_batt = float(best_backup.iloc[0]["battery_kwh"]) if not best_backup.empty else -1.0
+
+    def _is_distinct(row):
+        # Distinct from fastest_payback: different panel OR different battery
+        d_fp = (abs(row["panel_kw"] - fp_panel) >= 0.5) or (abs(row["battery_kwh"] - fp_batt) >= 0.5)
+        # Distinct from best_backup: MUST have a different battery tier — sharing the same
+        # battery_kwh as best_backup means the two cards would recommend the same storage
+        # product to the customer, which makes best_npv redundant and confusing.
+        d_bb = abs(row["battery_kwh"] - bb_batt) >= 2.0
+        return d_fp and d_bb
+
+    distinct_mask = df.apply(_is_distinct, axis=1)
+    npv_pool = df[distinct_mask]
+    if npv_pool.empty:
+        # Fallback 1: relax battery-tier constraint — distinct from best_backup on panel at least
+        distinct_panel = df.apply(
+            lambda r: (abs(r["panel_kw"] - bb_panel) >= 0.5) and
+                      ((abs(r["panel_kw"] - fp_panel) >= 0.5) or (abs(r["battery_kwh"] - fp_batt) >= 0.5)),
+            axis=1,
         )
+        npv_pool = df[distinct_panel]
+    if npv_pool.empty:
+        # Fallback 2: distinct from fastest_payback only
+        distinct_fp = df.apply(lambda r: (abs(r["panel_kw"] - fp_panel) >= 0.5) or (abs(r["battery_kwh"] - fp_batt) >= 0.5), axis=1)
+        npv_pool = df[distinct_fp]
+    if npv_pool.empty:
+        npv_pool = df
+
+    best_npv = npv_pool.nlargest(n, "npv_25yr_inr")
 
     return {
-        "fastest_payback": payback_candidates.nsmallest(n, "payback_years"),
-        "best_npv":         df.nlargest(n, "npv_25yr_inr"),
+        "fastest_payback": fastest_payback,
+        "best_npv":         best_npv,
         "best_backup":      best_backup,
     }

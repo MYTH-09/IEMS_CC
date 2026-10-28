@@ -1,0 +1,355 @@
+{
+  "history": [
+    {
+      "step": 10000,
+      "elapsed_sec": 102.4,
+      "fps": 97,
+      "mean_episode_reward": -1182.19,
+      "episodes_completed": 3
+    },
+    {
+      "step": 20000,
+      "elapsed_sec": 266.2,
+      "fps": 75,
+      "mean_episode_reward": -813.5,
+      "episodes_completed": 6
+    },
+    {
+      "step": 30000,
+      "elapsed_sec": 351.6,
+      "fps": 85,
+      "mean_episode_reward": 308.41,
+      "episodes_completed": 10
+    },
+    {
+      "step": 40000,
+      "elapsed_sec": 547.0,
+      "fps": 73,
+      "mean_episode_reward": 518.15,
+      "episodes_completed": 13
+    },
+    {
+      "step": 50000,
+      "elapsed_sec": 760.6,
+      "fps": 65,
+      "mean_episode_reward": 784.42,
+      "episodes_completed": 17
+    },
+    {
+      "step": 60000,
+      "elapsed_sec": 844.5,
+      "fps": 71,
+      "mean_episode_reward": 1195.34,
+      "episodes_completed": 20
+    },
+    {
+      "step": 70000,
+      "elapsed_sec": 991.1,
+      "fps": 70,
+      "mean_episode_reward": 1141.69,
+      "episodes_completed": 24
+    },
+    {
+      "step": 80000,
+      "elapsed_sec": 1081.3,
+      "fps": 73,
+      "mean_episode_reward": 1098.26,
+      "episodes_completed": 27
+    },
+    {
+      "step": 90000,
+      "elapsed_sec": 1230.5,
+      "fps": 73,
+      "mean_episode_reward": 1243.03,
+      "episodes_completed": 31
+    },
+    {
+      "step": 100000,
+      "elapsed_sec": 1377.7,
+      "fps": 72,
+      "mean_episode_reward": 1204.7,
+      "episodes_completed": 34
+    },
+    {
+      "step": 110000,
+      "elapsed_sec": 1469.6,
+      "fps": 74,
+      "mean_episode_reward": 1297.55,
+      "episodes_completed": 38
+    },
+    {
+      "step": 120000,
+      "elapsed_sec": 1630.5,
+      "fps": 73,
+      "mean_episode_reward": 1421.84,
+      "episodes_completed": 41
+    },
+    {
+      "step": 130000,
+      "elapsed_sec": 1719.7,
+      "fps": 75,
+      "mean_episode_reward": 1560.1,
+      "episodes_completed": 45
+    },
+    {
+      "step": 140000,
+      "elapsed_sec": 1861.9,
+      "fps": 75,
+      "mean_episode_reward": 1727.2,
+      "episodes_completed": 48
+    },
+    {
+      "step": 150000,
+      "elapsed_sec": 2003.8,
+      "fps": 74,
+      "mean_episode_reward": 1906.06,
+      "episodes_completed": 52
+    },
+    {
+      "step": 160000,
+      "elapsed_sec": 2097.4,
+      "fps": 76,
+      "mean_episode_reward": 2054.98,
+      "episodes_completed": 55
+    },
+    {
+      "step": 170000,
+      "elapsed_sec": 2236.8,
+      "fps": 76,
+      "mean_episode_reward": 2359.84,
+      "episodes_completed": 59
+    },
+    {
+      "step": 180000,
+      "elapsed_sec": 2322.4,
+      "fps": 77,
+      "mean_episode_reward": 2460.89,
+      "episodes_completed": 62
+    },
+    {
+      "step": 190000,
+      "elapsed_sec": 2460.5,
+      "fps": 77,
+      "mean_episode_reward": 2696.93,
+      "episodes_completed": 65
+    },
+    {
+      "step": 200000,
+      "elapsed_sec": 2601.4,
+      "fps": 76,
+      "mean_episode_reward": 2873.82,
+      "episodes_completed": 69
+    },
+    {
+      "step": 210000,
+      "elapsed_sec": 2686.6,
+      "fps": 78,
+      "mean_episode_reward": 2954.18,
+      "episodes_completed": 72
+    },
+    {
+      "step": 220000,
+      "elapsed_sec": 2826.0,
+      "fps": 77,
+      "mean_episode_reward": 3088.23,
+      "episodes_completed": 76
+    },
+    {
+      "step": 230000,
+      "elapsed_sec": 2911.3,
+      "fps": 79,
+      "mean_episode_reward": 3136.44,
+      "episodes_completed": 79
+    },
+    {
+      "step": 240000,
+      "elapsed_sec": 3057.6,
+      "fps": 78,
+      "mean_episode_reward": 3224.57,
+      "episodes_completed": 83
+    },
+    {
+      "step": 250000,
+      "elapsed_sec": 3200.8,
+      "fps": 78,
+      "mean_episode_reward": 3228.57,
+      "episodes_completed": 86
+    },
+    {
+      "step": 260000,
+      "elapsed_sec": 3285.3,
+      "fps": 79,
+      "mean_episode_reward": 3285.14,
+      "episodes_completed": 90
+    },
+    {
+      "step": 270000,
+      "elapsed_sec": 3424.0,
+      "fps": 78,
+      "mean_episode_reward": 3306.27,
+      "episodes_completed": 93
+    },
+    {
+      "step": 280000,
+      "elapsed_sec": 3507.8,
+      "fps": 79,
+      "mean_episode_reward": 3351.64,
+      "episodes_completed": 97
+    },
+    {
+      "step": 290000,
+      "elapsed_sec": 3648.9,
+      "fps": 79,
+      "mean_episode_reward": 3364.1,
+      "episodes_completed": 100
+    },
+    {
+      "step": 300000,
+      "elapsed_sec": 3789.5,
+      "fps": 79,
+      "mean_episode_reward": 3633.73,
+      "episodes_completed": 100
+    },
+    {
+      "step": 310000,
+      "elapsed_sec": 3873.8,
+      "fps": 80,
+      "mean_episode_reward": 3862.78,
+      "episodes_completed": 100
+    },
+    {
+      "step": 320000,
+      "elapsed_sec": 4013.1,
+      "fps": 79,
+      "mean_episode_reward": 3949.36,
+      "episodes_completed": 100
+    },
+    {
+      "step": 330000,
+      "elapsed_sec": 4096.5,
+      "fps": 80,
+      "mean_episode_reward": 4129.29,
+      "episodes_completed": 100
+    },
+    {
+      "step": 340000,
+      "elapsed_sec": 4235.3,
+      "fps": 80,
+      "mean_episode_reward": 4289.16,
+      "episodes_completed": 100
+    },
+    {
+      "step": 350000,
+      "elapsed_sec": 4375.2,
+      "fps": 79,
+      "mean_episode_reward": 4265.45,
+      "episodes_completed": 100
+    },
+    {
+      "step": 360000,
+      "elapsed_sec": 4460.5,
+      "fps": 80,
+      "mean_episode_reward": 4396.92,
+      "episodes_completed": 100
+    },
+    {
+      "step": 370000,
+      "elapsed_sec": 4600.0,
+      "fps": 80,
+      "mean_episode_reward": 4571.76,
+      "episodes_completed": 100
+    },
+    {
+      "step": 380000,
+      "elapsed_sec": 4684.4,
+      "fps": 81,
+      "mean_episode_reward": 4684.51,
+      "episodes_completed": 100
+    },
+    {
+      "step": 390000,
+      "elapsed_sec": 4825.4,
+      "fps": 80,
+      "mean_episode_reward": 4839.88,
+      "episodes_completed": 100
+    },
+    {
+      "step": 400000,
+      "elapsed_sec": 4965.9,
+      "fps": 80,
+      "mean_episode_reward": 4923.32,
+      "episodes_completed": 100
+    },
+    {
+      "step": 410000,
+      "elapsed_sec": 5052.8,
+      "fps": 81,
+      "mean_episode_reward": 5006.39,
+      "episodes_completed": 100
+    },
+    {
+      "step": 420000,
+      "elapsed_sec": 5191.6,
+      "fps": 80,
+      "mean_episode_reward": 5148.18,
+      "episodes_completed": 100
+    },
+    {
+      "step": 430000,
+      "elapsed_sec": 5292.5,
+      "fps": 81,
+      "mean_episode_reward": 5282.92,
+      "episodes_completed": 100
+    },
+    {
+      "step": 440000,
+      "elapsed_sec": 5433.2,
+      "fps": 80,
+      "mean_episode_reward": 5289.29,
+      "episodes_completed": 100
+    },
+    {
+      "step": 450000,
+      "elapsed_sec": 5573.2,
+      "fps": 80,
+      "mean_episode_reward": 5274.05,
+      "episodes_completed": 100
+    },
+    {
+      "step": 460000,
+      "elapsed_sec": 5658.4,
+      "fps": 81,
+      "mean_episode_reward": 5268.27,
+      "episodes_completed": 100
+    },
+    {
+      "step": 470000,
+      "elapsed_sec": 5797.9,
+      "fps": 81,
+      "mean_episode_reward": 5193.94,
+      "episodes_completed": 100
+    },
+    {
+      "step": 480000,
+      "elapsed_sec": 5888.7,
+      "fps": 81,
+      "mean_episode_reward": 5157.93,
+      "episodes_completed": 100
+    },
+    {
+      "step": 490000,
+      "elapsed_sec": 6036.4,
+      "fps": 81,
+      "mean_episode_reward": 5228.73,
+      "episodes_completed": 100
+    },
+    {
+      "step": 500000,
+      "elapsed_sec": 6181.1,
+      "fps": 80,
+      "mean_episode_reward": 5187.85,
+      "episodes_completed": 100
+    }
+  ],
+  "last_update": "2026-10-27 21:09:20"
+}

@@ -249,7 +249,7 @@ def _run_ga_explainer(job_id: str, req: GAExplainerStartRequest) -> None:
             maintenance_cost_annual_inr=2000.0,
         )
 
-        n_workers = req.n_workers if req.n_workers is not None else min(os.cpu_count() or 1, 4)
+        n_workers = req.n_workers if req.n_workers is not None else (os.cpu_count() or 1)
         pool = None
         elementwise_runner = LoopedElementwiseEvaluation()
         if n_workers > 1:

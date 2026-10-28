@@ -41,6 +41,7 @@ GET /api/pipeline/result/{job_id}/{stage_name}
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -61,8 +62,8 @@ class PipelineStartRequest(BaseModel):
     city: str
     subsidy_eligible: bool = True
     n_workers: Optional[int] = None
-    ga_pop_size: int = 12
-    ga_n_gen: int = 8
+    ga_pop_size: int = 30
+    ga_n_gen: int = 30
 
 
 def _build_financial_config(subsidy_eligible: bool) -> dict:
@@ -93,7 +94,7 @@ async def start_pipeline(req: PipelineStartRequest) -> dict:
         "monthly_bill_inr": req.monthly_bill_inr,
         "city": city_name,
         "financial_config": _build_financial_config(req.subsidy_eligible),
-        "n_workers": req.n_workers,
+        "n_workers": req.n_workers if req.n_workers is not None else (os.cpu_count() or 1),
         "ga_pop_size": req.ga_pop_size,
         "ga_n_gen": req.ga_n_gen,
     }
@@ -105,7 +106,7 @@ async def start_pipeline(req: PipelineStartRequest) -> dict:
     # run independently while this endpoint returns immediately.
     asyncio.create_task(run_pipeline_job(job_id, STAGE_FUNCTIONS))
 
-    logger.info(f"Pipeline job started: {job_id} (city={req.city}, bill=₹{req.monthly_bill_inr})")
+    logger.info(f"Pipeline job started: {job_id} (city={req.city}, bill=INR {req.monthly_bill_inr})")
     return {"job_id": job_id, "stages": list(STAGE_DEPENDENCIES.keys())}
 
 
