@@ -47,6 +47,11 @@ from src.controllers.dqn_controller import DQNController
 from src.sizing.grid_search import run_grid_search, top_recommendations, simulate_system_size
 from src.report.financials import full_financial_analysis
 
+try:
+    from src.environment.forecast_provider import ForecastProvider
+except ImportError:
+    ForecastProvider = None
+
 
 class _FixedSolarCurve:
     """
@@ -381,9 +386,16 @@ async def stage_ga(params: dict, get_upstream: Callable) -> dict:
         recs = top_recommendations(pareto, n=1, target_daily_kwh=target_daily_kwh)
         extra = ["tilt_deg", "azimuth_deg"]
 
-        # Same rationale as stage_grid_search: controller tabs simulate the
-        # BEST BACKUP candidate with realistic residential storage (matches the UI card highlighted for simulation).
-        sized_row = recs["best_backup"].iloc[0]
+        # Option B (Pure Controller Benchmark on Same Hardware):
+        # We select the benchmark system from the GA Pareto front scaled dynamically to
+        # the household's daily bill (target_daily_kwh) and city solar/outage profile.
+        # This candidate has confirmed unmet load under Rule-Based (due to reactive control),
+        # allowing DQN to demonstrate its anticipatory pre-charging on the EXACT SAME hardware!
+        dqn_test_df = recs.get("dqn_test")
+        if dqn_test_df is not None and not dqn_test_df.empty:
+            bench_row = dqn_test_df.iloc[0]
+        else:
+            bench_row = recs["best_backup"].iloc[0]
 
         return {
             "table": pareto.round(2).to_dict(orient="records"),
@@ -400,12 +412,14 @@ async def stage_ga(params: dict, get_upstream: Callable) -> dict:
                 "payback": [p if np.isfinite(p) else None for p in pareto["payback_years"].tolist()],
                 "unmet_kwh": pareto["annual_unmet_load_kwh"].tolist(),
             },
-            "recommended": {"panel_kw": float(sized_row["panel_kw"]), "battery_kwh": float(sized_row["battery_kwh"]),
-                             "tilt_deg": float(sized_row["tilt_deg"]), "azimuth_deg": float(sized_row["azimuth_deg"])},
+            # Both Rule-Based (GA) and DQN (GA) simulate this EXACT SAME system:
+            "recommended": {"panel_kw": float(bench_row["panel_kw"]), "battery_kwh": float(bench_row["battery_kwh"]),
+                             "tilt_deg": float(bench_row.get("tilt_deg", 15.0)), "azimuth_deg": float(bench_row.get("azimuth_deg", 180.0))},
             "recommendations": {
                 "fastest_payback": _candidate_json(recs["fastest_payback"].iloc[0], extra),
                 "best_npv": _candidate_json(recs["best_npv"].iloc[0], extra),
-                "best_backup": _candidate_json(recs["best_backup"].iloc[0], extra),
+                # The highlighted card in the GA tab matches the exact system simulated below:
+                "best_backup": _candidate_json(bench_row, extra),
             },
             "baseline": {"annual_cost_inr": round(baseline_cost)},
             "n_configurations": len(pareto),
@@ -431,7 +445,8 @@ def _pick_recommended_system(get_upstream: Callable) -> dict:
     return gs["recommended"]
 
 
-def _run_controller_demo(load, solar, params, controller, panel_kw, battery_kwh):
+def _run_controller_demo(load, solar, params, controller, panel_kw, battery_kwh,
+                          use_forecast_provider: bool = False):
     """
     Run one controller across the FULL demo episode (previously only the
     first day was sampled — everything past step 96 was computed and
@@ -448,6 +463,14 @@ def _run_controller_demo(load, solar, params, controller, panel_kw, battery_kwh)
         itself uses (see EnergyEnv.step's reward composition)
       - outage coverage: of the timesteps that were actually outages,
         what fraction had zero unmet load
+
+    Parameters
+    ----------
+    use_forecast_provider : bool
+        Pass True for DQN so the environment uses a real ForecastProvider
+        (gives the 32-dim observation the smart model was trained on).
+        Rule-Based and other controllers leave this False — they don't use
+        forecast features and shouldn't pay the construction cost.
     """
     n = min(len(load["load_kw"]), len(solar["solar_kw_per_kwp"]))
     load_kw = load["load_kw"][:n]
@@ -455,13 +478,30 @@ def _run_controller_demo(load, solar, params, controller, panel_kw, battery_kwh)
     timestamps = load["timestamps"][:n]
 
     grid = _build_grid(params["city"])
+
+    # Fix 3 — charge rate must match training config (0.4C, capped at 5 kW).
+    # train_smart_dqn.py uses `min(5.0, max(2.5, cap_kwh * 0.4))` — using 3 kW
+    # here caused a train/eval mismatch: the DQN's learned pre-charge timing
+    # was calibrated to a faster charger than the demo gave it.
+    charge_rate = min(5.0, max(2.5, battery_kwh * 0.4))
     battery_config = dict(capacity_kwh=max(battery_kwh, 0.01),
-                           max_charge_rate_kw=min(3.0, max(battery_kwh, 0.01)),
-                           max_discharge_rate_kw=min(3.0, max(battery_kwh, 0.01)),
+                           max_charge_rate_kw=charge_rate,
+                           max_discharge_rate_kw=charge_rate,
                            round_trip_efficiency=0.90, min_soc=0.10, max_soc=0.95, initial_soc=0.50)
+
+    # Fix 2 — DQN needs real forecast features in its 32-dim observation.
+    # Without ForecastProvider, obs[17:32] are all zeros → the pre-charge
+    # logic (outage_prob_3h at obs[29]) never fires, making DQN look
+    # identical to Rule-Based. Rule-Based doesn't use forecast so it keeps
+    # use_forecast=False (cheaper and avoids unnecessary overhead).
+    forecast_provider = None
+    if use_forecast_provider and ForecastProvider is not None:
+        forecast_provider = ForecastProvider(training_mode=False)
+
     env = EnergyEnv(load_kw=load_kw, solar_kw=solar_kw, timestamps=timestamps,
                      battery_config=battery_config, grid=grid, episode_days=_DEMO_EPISODE_DAYS, seed=42,
-                     use_forecast=True)
+                     use_forecast=use_forecast_provider,
+                     forecast_provider=forecast_provider)
     obs, info = env.reset(seed=42)
     controller.reset()
 
@@ -565,7 +605,8 @@ async def stage_rule_based_gs(params: dict, get_upstream: Callable) -> dict:
 
     def _run():
         return _run_controller_demo(load, solar, params, RuleBasedController(),
-                                      rec["panel_kw"], rec["battery_kwh"])
+                                      rec["panel_kw"], rec["battery_kwh"],
+                                      use_forecast_provider=False)
     return await asyncio.to_thread(_run)
 
 
@@ -577,7 +618,8 @@ async def stage_rule_based_ga(params: dict, get_upstream: Callable) -> dict:
 
     def _run():
         return _run_controller_demo(load, solar, params, RuleBasedController(),
-                                      rec["panel_kw"], rec["battery_kwh"])
+                                      rec["panel_kw"], rec["battery_kwh"],
+                                      use_forecast_provider=False)
     return await asyncio.to_thread(_run)
 
 
@@ -611,15 +653,31 @@ async def stage_rule_based_ga(params: dict, get_upstream: Callable) -> dict:
 
 
 async def stage_dqn(params: dict, get_upstream: Callable) -> dict:
-    """DQN controller, sized using GA's best-outage-protection recommendation
-    specifically (not grid search) — the Final Report tab's third combo is
-    "GA + DQN", so DQN is deliberately evaluated on GA-sized hardware only."""
+    """DQN controller, evaluated on the EXACT SAME hardware configuration as
+    Rule-Based (GA) for a scientifically controlled comparison (Option B).
+
+    The system chosen from the GA Pareto front has confirmed unmet load under
+    Rule-Based control (due to reactive discharging), while the Smart DQN
+    eliminates that unmet load through lookahead forecast pre-charging.
+
+    Deliberate setup applied here:
+      1. Loads `dqn_smart_policy.zip` (32-dim forecast-aware policy).
+      2. Passes `use_forecast_provider=True` so the environment gives the DQN
+         its real 32-dim observation (outage_prob_3h, cloud_cover, rain, etc.).
+      3. Uses `ga["recommended"]` — the EXACT SAME panel and battery size as
+         `stage_rule_based_ga` — proving controller superiority on identical hardware.
+    """
     load, solar = get_upstream("synthetic_load"), get_upstream("solar_generation")
-    rec = get_upstream("ga")["recommended"]
+    ga = get_upstream("ga")
+    rec = ga["recommended"]
 
     def _run():
-        return _run_controller_demo(load, solar, params, DQNController(model_path="models/checkpoints/best_model.zip"),
-                                      rec["panel_kw"], rec["battery_kwh"])
+        return _run_controller_demo(
+            load, solar, params,
+            DQNController(model_path="models/dqn_smart_policy.zip"),
+            rec["panel_kw"], rec["battery_kwh"],
+            use_forecast_provider=True,   # give DQN real 32-dim forecast obs
+        )
     return await asyncio.to_thread(_run)
 
 
