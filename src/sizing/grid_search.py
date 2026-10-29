@@ -88,8 +88,8 @@ def simulate_system_size(
 
     battery_config = dict(
         capacity_kwh=max(battery_kwh, 0.01),   # avoid zero-capacity edge case
-        max_charge_rate_kw=min(3.0, max(battery_kwh, 0.01)),
-        max_discharge_rate_kw=min(3.0, max(battery_kwh, 0.01)),
+        max_charge_rate_kw=max(3.0, min(5.0, battery_kwh * 0.4)),
+        max_discharge_rate_kw=max(5.0, min(10.0, max(panel_kw * 1.25, battery_kwh * 0.5))),
         round_trip_efficiency=0.90,
         min_soc=0.10, max_soc=0.95, initial_soc=0.50,
     )
@@ -100,7 +100,7 @@ def simulate_system_size(
         episode_days=episode_days, seed=seed,
         use_forecast=False,
     )
-    controller = RuleBasedController()
+    controller = RuleBasedController(backup_reserve_soc=0.25)
 
     obs, info = env.reset(seed=seed)
     controller.reset()
@@ -353,7 +353,21 @@ def top_recommendations(
     if backup_pool.empty:
         backup_pool = df
 
-    if "outage_steps_covered" in backup_pool.columns:
+    # Zero-unmet-load priority:
+    # If configurations with zero (or negligible <= 0.5 kWh/yr) unmet load exist, prioritize them!
+    # Among zero-unmet solutions, pick the one with highest NPV so the user gets 100% outage
+    # coverage at the best financial return.
+    min_unmet_val = backup_pool["annual_unmet_load_kwh"].min() if "annual_unmet_load_kwh" in backup_pool.columns else 999.0
+    threshold = max(0.5, min_unmet_val + 0.1) if min_unmet_val <= 0.5 else min_unmet_val
+
+    zero_unmet = backup_pool[backup_pool["annual_unmet_load_kwh"] <= threshold] if "annual_unmet_load_kwh" in backup_pool.columns else pd.DataFrame()
+
+    if not zero_unmet.empty:
+        best_backup = zero_unmet.sort_values(
+            by=["npv_25yr_inr", "annual_savings_inr"],
+            ascending=[False, False]
+        ).head(n)
+    elif "outage_steps_covered" in backup_pool.columns:
         best_backup = backup_pool.sort_values(
             by=["outage_steps_covered", "annual_unmet_load_kwh", "npv_25yr_inr"],
             ascending=[False, True, False]

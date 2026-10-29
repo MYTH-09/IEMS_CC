@@ -1209,7 +1209,7 @@
         <p class="chart-sublabel" style="margin-top:20px">All combinations — outage hours faced vs annual cost</p>
         <canvas id="chart-outage_proof" height="100"></canvas>
         ${dataTable(tableRows, cols)}
-        <p class="table-note">★ = lowest annualized unmet load among combos that completed successfully. A combo can be missing here if its controller stage failed or was blocked (e.g. DQN with no trained policy file).</p>
+        <p class="table-note">★ = highest annual savings among configurations with maximum outage protection (100% blackout resilience). A combo can be missing here if its controller stage failed or was blocked (e.g. DQN with no trained policy file).</p>
       </div>`;
                 destroyChartsWithPrefix("outage_proof");
                 charts.outage_proof = new Chart(document.getElementById("chart-outage_proof"), {

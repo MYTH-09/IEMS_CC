@@ -429,6 +429,13 @@ class EnergyEnv(gym.Env):
         self._step_idx += 1
         self._data_idx += 1
 
+        # Check calendar month boundary for monthly tariff slab reset
+        if self._data_idx < len(self.timestamps):
+            prev_month = self.timestamps[self._data_idx - 1].month
+            curr_month = self.timestamps[self._data_idx].month
+            if curr_month != prev_month:
+                self._cumulative_units_this_month = 0.0
+
         terminated = False   # no natural "failure" terminal state in this env
         truncated  = self._step_idx >= self.episode_steps
 

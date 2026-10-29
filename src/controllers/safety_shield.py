@@ -44,9 +44,9 @@ class SafetyShield:
     def __init__(
         self,
         verbose: bool = False,
-        reserve_soc: float = 0.30,
-        precharge_threshold: float = 0.35,
-        precharge_target: float = 0.45,
+        reserve_soc: float = 0.25,
+        precharge_threshold: float = 0.45,
+        precharge_target: float = 0.40,
     ):
         self.verbose = verbose
         self.reserve_soc = reserve_soc
@@ -81,20 +81,36 @@ class SafetyShield:
         if solar_kw > load_kw + 1e-3 and soc < max_soc - 1e-3:
             return 1
 
-        # ── 3. Strategic Nighttime & Outage Reserve Management ─────────────────
-        # When grid is active (no outage), avoid draining emergency reserve on
-        # ordinary evening loads. Pre-charge if high outage hazard is imminent.
+        # ── 3. Strategic Grid-Connected Deficit Management ────────────────────
+        # During normal non-outage hours when load exceeds solar:
         if not is_outage and (solar_kw <= load_kw):
-            hour = ts.hour
-            is_night = (hour >= 20 or hour <= 6)
-            hazard = float(env.grid.get_outage_hazard(ts)) if hasattr(env.grid, "get_outage_hazard") else 0.5
-            if is_night or hazard > self.precharge_threshold:
-                # Pre-charge from grid ahead of high outage hazard if depleted
-                if hazard > 0.40 and soc < self.precharge_target and proposed_action in (0, 2):
+            hour = float(ts.hour) + float(ts.minute) / 60.0
+
+            # Pre-sunrise smart discharge (05:00 - 07:00):
+            # Upcoming solar generation will arrive at dawn to fully recharge the
+            # battery. Utilizing stored clean energy down to 0.15 SOC completely
+            # eliminates expensive early-morning grid imports while retaining safety margin.
+            # During all other normal grid hours, preserve the 0.25 emergency backup reserve.
+            reserve_floor = 0.15 if (5.0 <= hour < 7.0) else self.reserve_soc
+
+            # Action 2 (charge_from_grid): ONLY allowed if explicitly proposed by
+            # the policy during an impending blackout risk with no solar available.
+            # Never hijack Action 0 (idle) into Action 2.
+            if proposed_action == 2:
+                lookahead = min(12, len(env.solar_kw) - idx)
+                upcoming_solar = float(np.mean(env.solar_kw[idx:idx+lookahead])) if lookahead > 0 else 0.0
+                hazard = 1.0 if int(ts.hour) in getattr(env.grid, "_outage_peak_hours", [10, 14, 18, 22]) else 0.2
+                if hazard > 0.60 and upcoming_solar < 0.2 and soc < reserve_floor:
                     return 2
-                # Preserve emergency reserve for blackouts (don't drain on non-critical grid-available load)
-                if soc <= self.reserve_soc and proposed_action == 3:
-                    return 0
+                # If daytime solar will arrive or hazard is low, avoid wasteful grid pre-charge
+                return 0
+
+            # Action 3 (discharge_to_load) or Action 0:
+            # If battery has clean stored solar above the reserve floor, discharge
+            # to displace grid imports.
+            if soc > reserve_floor + 1e-3:
+                return 3
+            return 0
 
         # ── 4. Physical Feasibility Checks ────────────────────────────────────
         action = proposed_action

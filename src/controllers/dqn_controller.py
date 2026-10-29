@@ -153,26 +153,21 @@ class _TrainedQPolicy:
 
         # 2. Outage: Discharge down to min_soc to keep household powered
         if is_outage:
-            if soc > 0.10:
+            if soc > 0.10 + 1e-3:
                 return 3, None
             return 0, None
 
         # 3. Weather / Outage Anticipation:
-        # If severe rain or outage is imminent within 3h, and SOC is below target, pre-charge!
-        is_risk_ahead = (outage_prob_3h >= 0.45) or (rain_prob_3h >= 0.55) or (outage_hazard >= 0.70)
-        if is_risk_ahead and soc < max(0.65, req_soc):
+        # Pre-charge ONLY if high outage probability AND virtually zero solar upcoming
+        is_risk_ahead = (outage_prob_3h >= 0.60) or (outage_hazard >= 0.80)
+        upcoming_solar_low = (solar_norm < 0.05)
+        if is_risk_ahead and upcoming_solar_low and soc < 0.25:
             return 2, None
 
         # 4. Solar Deficit:
-        # Maintain morning resilience reserve (1.0 kWh) between 02:00 and 07:00
-        reserve_frac = min(0.12, 1.0 / max(cap_kwh, 3.0))
-        if 2.0 <= hour < 7.0:
-            if soc > 0.10 + reserve_frac:
-                return 3, None
-            return 0, None
-
-        # Normal hours: discharge to eliminate grid import
-        if soc > 0.10:
+        # Pre-sunrise discharge (05:00 - 07:00) down to 0.15; otherwise preserve 0.25 backup reserve
+        reserve_floor = 0.15 if (5.0 <= hour < 7.0) else 0.25
+        if soc > reserve_floor + 1e-3:
             return 3, None
 
         return 0, None
@@ -206,10 +201,16 @@ class DQNController(BaseController):
             pass
 
         # Resolve candidate paths (prioritize smart model, then checkpoints, then legacy)
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         candidates = []
-        if model_path and model_path not in ("models/checkpoints/best_model.zip", "models/dqn_policy.zip"):
+        if model_path:
             candidates.append(model_path)
+            candidates.append(os.path.join(project_root, model_path))
         candidates.extend([
+            os.path.join(project_root, "models", "dqn_smart_policy.zip"),
+            os.path.join(project_root, "models", "checkpoints_smart", "best_model.zip"),
+            os.path.join(project_root, "models", "checkpoints", "best_model.zip"),
+            os.path.join(project_root, "models", "dqn_policy.zip"),
             "models/dqn_smart_policy.zip",
             "models/checkpoints_smart/best_model.zip",
             "models/checkpoints/best_model.zip",
@@ -217,6 +218,7 @@ class DQNController(BaseController):
         ])
         if model_path and model_path not in candidates:
             candidates.append(model_path)
+            candidates.append(os.path.join(project_root, model_path))
 
         resolved_path = None
         for p in candidates:

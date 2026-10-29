@@ -56,17 +56,21 @@ def capex(
 
     panel_cost_gross = panel_kw * panel_cost_per_kw
 
-    # Subsidy applies only to panel cost, tiered by capacity:
-    # first 2kW at subsidy_rate_up_to_2kw, next portion (up to subsidy_max_kw) at subsidy_rate_2_to_3kw
-    tier1_kw = min(panel_kw, 2.0)
-    tier2_kw = max(0.0, min(panel_kw, subsidy_max_kw) - 2.0)
+    # Official PM Surya Ghar Muft Bijli Yojana schedule (2024 MNRE guidelines):
+    # - Up to 2 kW: Rs 30,000 per kW (Rs 60,000 for 2 kW)
+    # - 2 kW to 3 kW: Rs 18,000 per kW (reaches Rs 78,000 at 3 kW)
+    # - Above 3 kW: capped at Rs 78,000 max
+    if subsidy_rate_up_to_2kw > 0.0:
+        if panel_kw <= 2.0:
+            subsidy_amount = panel_kw * 30000.0
+        elif panel_kw <= subsidy_max_kw:
+            subsidy_amount = 60000.0 + (panel_kw - 2.0) * 18000.0
+        else:
+            subsidy_amount = 78000.0
+    else:
+        subsidy_amount = 0.0
 
-    subsidy_amount = (
-        tier1_kw * panel_cost_per_kw * subsidy_rate_up_to_2kw +
-        tier2_kw * panel_cost_per_kw * subsidy_rate_2_to_3kw
-    )
-
-    panel_cost_net = panel_cost_gross - subsidy_amount
+    panel_cost_net = max(0.0, panel_cost_gross - subsidy_amount)
     battery_cost   = battery_kwh * battery_cost_per_kwh
     bos_cost       = balance_of_system_cost
 
@@ -268,6 +272,11 @@ def full_financial_analysis(
         annual_savings, capex_result["total_capex"],
         discount_rate=config["discount_rate"],
     )
+
+    # Discounted Year-10 battery replacement cost for realistic 25-yr NPV
+    if battery_kwh > 0.01:
+        replacement_cost_yr10 = battery_kwh * 8000.0
+        npv_result -= replacement_cost_yr10 / ((1.0 + config["discount_rate"]) ** 10)
 
     cashflows = np.concatenate([[-capex_result["total_capex"]], annual_savings])
     irr_result = irr(cashflows)

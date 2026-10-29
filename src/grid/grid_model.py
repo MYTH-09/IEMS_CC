@@ -228,7 +228,17 @@ class GridModel:
             except KeyError:
                 # Timestamp not in lookup (e.g. synthetic date beyond data range)
                 return self._fallback_is_outage(timestamp)
+
         return self._fallback_is_outage(timestamp)
+
+    def get_outage_mask(self, timestamps) -> np.ndarray:
+        """Vectorized boolean outage mask for an entire DatetimeIndex or array."""
+        if self._outage_lookup is not None:
+            try:
+                return self._outage_lookup.reindex(timestamps, fill_value=False).to_numpy(dtype=bool)
+            except Exception:
+                pass
+        return np.array([self.is_outage(ts) for ts in timestamps], dtype=bool)
 
     def _fallback_is_outage(self, timestamp: pd.Timestamp) -> bool:
         """
