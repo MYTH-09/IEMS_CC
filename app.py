@@ -48,6 +48,7 @@ from src.sizing.validate_candidates import (
     run_validation, diagnose_ranking_disagreement, resolve_recommendation,
 )
 from src.report.financials import full_financial_analysis
+from src.resource_limits import resolve_worker_count
 
 
 def compute_baseline_annual_cost(
@@ -216,7 +217,7 @@ class SizingRequest(BaseModel):
     subsidy_eligible: bool = True
     depth: Literal["quick", "thorough"] = "quick"
     avg_rate_inr_per_kwh: float = 5.0   # rough rate to convert bill → units for the initial profile target
-    n_workers: Optional[int] = None     # None = auto-detect all available CPU cores
+    n_workers: Optional[int] = None     # None = conservative default (up to 4 workers)
     validate_candidates_flag: bool = True   # run the real rule-based/MPC/DQN spot-check (§8.4/validate_candidates.py)
 
 
@@ -354,7 +355,7 @@ def size_system(req: SizingRequest) -> dict:
     )
     solar_curve = FixedSolarCurve(solar_kw_per_kwp)
 
-    workers = req.n_workers if req.n_workers is not None else (os.cpu_count() or 1)
+    workers = resolve_worker_count(req.n_workers)
 
     if req.depth == "quick":
         panel_sizes = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0]

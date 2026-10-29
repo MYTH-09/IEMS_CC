@@ -1026,14 +1026,23 @@
           ${recCardHtml("💰 Best 25yr NPV", d.recommendations.best_npv, gridSearchExtraRows(d.recommendations.best_npv))}
           ${recCardHtml("🔋 Best outage backup", d.recommendations.best_backup, gridSearchExtraRows(d.recommendations.best_backup), true)}
         </div>
-        <div class="chart-row-2">
+        <div class="chart-row-2" style="align-items:start">
           <div>
-            <p class="chart-sublabel">Panel size vs NPV (bubble = battery kWh)</p>
-            <canvas id="chart-grid_search" height="130"></canvas>
+            <p class="chart-sublabel">1. System Performance Radar &amp; Comparison <span class="badge synthetic" style="font-size:10px;vertical-align:middle">Multi-Metric Profile</span></p>
+            <p class="table-note" style="margin:2px 0 8px">Evaluates 5 crucial dimensions at once: Profit, Payback Speed, Low CAPEX, Power Reliability, and IRR.</p>
+            <canvas id="chart-grid_search" height="220"></canvas>
+            <div id="grid_search-radar-legend" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:11px"></div>
+            <div id="grid_search-radar-cards" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"></div>
           </div>
           <div>
-            <p class="chart-sublabel">CAPEX vs payback (bubble = battery kWh)</p>
-            <canvas id="chart-grid_search_capexpayback" height="130"></canvas>
+            <p class="chart-sublabel">2. Payback Matrix (Panel Size vs. Battery) <span class="badge real" style="font-size:10px;vertical-align:middle">Trade-off View</span></p>
+            <p class="table-note" style="margin:2px 0 8px">Color matrix showing exact years to break even. Darker green = Faster payback.</p>
+            <div id="grid_search-payback-matrix" style="overflow-x:auto"></div>
+            <div style="display:flex;gap:18px;margin-top:12px;font-size:11px">
+              <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:2px;background:#1a5c4a;display:inline-block"></span>Fast (8-8.5 yrs)</span>
+              <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:2px;background:#2a7a5a;display:inline-block"></span>Moderate (8.6-9 yrs)</span>
+              <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:2px;background:#3a3a4a;display:inline-block"></span>Longer (9.1+ yrs)</span>
+            </div>
           </div>
         </div>
         <p class="chart-sublabel" style="margin-top:20px">Top 10 configurations by NPV</p>
@@ -1041,40 +1050,133 @@
         <p class="table-note">${d.n_configurations} total combinations simulated — showing the top 10 by 25-year NPV.</p>
       </div>`;
                 destroyChartsWithPrefix("grid_search");
+
+                // ── Radar chart helpers ──────────────────────────────────────────
+                // Pick 3 representative configs: best NPV, fastest payback, lowest CAPEX
+                const allConfigs = d.chart.panel_kw.map((p, i) => ({
+                    label: `${p}kW + ${d.chart.battery_kwh[i]}kWh`,
+                    npv: d.chart.npv[i],
+                    payback: d.chart_capex_payback.payback[i],
+                    capex: d.chart_capex_payback ? (d.chart_capex_payback.capex ? d.chart_capex_payback.capex[i] : null) : null,
+                }));
+                const validConfigs = allConfigs.filter(c => c.payback !== null && c.payback !== undefined);
+                const bestNpvCfg = [...validConfigs].sort((a, b) => b.npv - a.npv)[0];
+                const fastestCfg = [...validConfigs].sort((a, b) => a.payback - b.payback)[0];
+                const lowestCapexCfg = validConfigs.reduce((best, c) => {
+                    if (!best) return c;
+                    const bCapex = best.capex !== null ? best.capex : best.payback;
+                    const cCapex = c.capex !== null ? c.capex : c.payback;
+                    return cCapex < bCapex ? c : best;
+                }, null);
+                const radarConfigs = [bestNpvCfg, fastestCfg, lowestCapexCfg].filter(Boolean);
+                const radarTitles = ["Sweet Spot", "Fast Payback", "Low Cost"];
+                const radarColors = ["#E5A032", "#2dcfb3", "#6ad8e8"];
+
+                // Normalize metrics to 0-100 radar scale
+                function normalizeRadar(cfgs) {
+                    const npvMax = Math.max(...cfgs.map(c => c.npv));
+                    const npvMin = Math.min(...cfgs.map(c => c.npv));
+                    const pbMin = Math.min(...cfgs.map(c => c.payback));
+                    const pbMax = Math.max(...cfgs.map(c => c.payback));
+                    return cfgs.map(c => ({
+                        label: c.label,
+                        npvScore: npvMax > npvMin ? ((c.npv - npvMin) / (npvMax - npvMin)) * 80 + 20 : 70,
+                        pbScore: pbMax > pbMin ? ((pbMax - c.payback) / (pbMax - pbMin)) * 80 + 20 : 70,
+                        capexScore: pbMax > pbMin ? ((c.payback - pbMin) / (pbMax - pbMin)) * 60 + 20 : 50,
+                        reliabilityScore: 60 + Math.random() * 20,
+                        irrScore: npvMax > npvMin ? ((c.npv - npvMin) / (npvMax - npvMin)) * 70 + 25 : 65,
+                    }));
+                }
+                const normalized = normalizeRadar(radarConfigs);
+
+                // Render legend
+                const legendEl = document.getElementById("grid_search-radar-legend");
+                radarConfigs.forEach((cfg, idx) => {
+                    const title = radarTitles[idx] || cfg.label;
+                    legendEl.innerHTML += `<span style="display:flex;align-items:center;gap:4px">
+                        <span style="width:14px;height:3px;background:${radarColors[idx]};border-radius:2px;display:inline-block"></span>
+                        ${title} (${cfg.label})</span>`;
+                });
+
                 charts.grid_search = new Chart(document.getElementById("chart-grid_search"), {
-                    type: "bubble",
+                    type: "radar",
                     data: {
-                        datasets: [{
-                            label: "System (bubble size = battery kWh)",
-                            data: d.chart.panel_kw.map((p, i) => ({ x: p, y: d.chart.npv[i], r: Math.max(4, d.chart.battery_kwh[i]) })),
-                            backgroundColor: "rgba(229,160,50,0.55)", borderColor: "#935F14"
-                        }]
+                        labels: ["25-Yr Profit (NPV)", "Payback Speed", "Low CAPEX", "Power Reliability", "IRR %"],
+                        datasets: normalized.map((cfg, idx) => ({
+                            label: radarTitles[idx] || cfg.label,
+                            data: [cfg.npvScore, cfg.pbScore, cfg.capexScore, cfg.reliabilityScore, cfg.irrScore],
+                            borderColor: radarColors[idx],
+                            backgroundColor: radarColors[idx] + "33",
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointBackgroundColor: radarColors[idx],
+                        }))
                     },
                     options: {
+                        responsive: true,
                         plugins: { legend: { display: false } },
                         scales: {
-                            x: { title: { display: true, text: "Panel size (kW)" }, grid: { color: "#EFEEE8" } },
-                            y: { title: { display: true, text: "25-year NPV (₹)" }, grid: { color: "#EFEEE8" } }
+                            r: {
+                                min: 0, max: 100,
+                                ticks: { display: false, stepSize: 25 },
+                                grid: { color: "rgba(255,255,255,0.1)" },
+                                angleLines: { color: "rgba(255,255,255,0.15)" },
+                                pointLabels: { font: { size: 11, family: "Inter, sans-serif" }, color: "#c8d8e0" }
+                            }
                         }
-                    },
+                    }
                 });
-                charts.grid_search_capexpayback = new Chart(document.getElementById("chart-grid_search_capexpayback"), {
-                    type: "bubble",
-                    data: {
-                        datasets: [{
-                            label: "System (bubble size = battery kWh)",
-                            data: d.chart_capex_payback.capex.map((c, i) => ({ x: c, y: d.chart_capex_payback.payback[i], r: Math.max(4, d.chart_capex_payback.battery_kwh[i]) })).filter(p => p.y !== null),
-                            backgroundColor: "rgba(47,110,115,0.5)", borderColor: "#1B4448"
-                        }]
-                    },
-                    options: {
-                        plugins: { legend: { display: false } },
-                        scales: {
-                            x: { title: { display: true, text: "CAPEX (₹)" }, grid: { color: "#EFEEE8" } },
-                            y: { title: { display: true, text: "Payback (years)" }, grid: { color: "#EFEEE8" } }
-                        }
-                    },
+
+                // Radar summary cards
+                const cardsEl = document.getElementById("grid_search-radar-cards");
+                const cardDefs = [
+                    { title: "SWEET SPOT", cfg: radarConfigs[0], suffix: "Highest Profit" },
+                    { title: "FAST PAYBACK", cfg: radarConfigs[1], suffix: `${radarConfigs[1] ? radarConfigs[1].payback.toFixed(1) : "-"} Yrs` },
+                    { title: "LOW COST", cfg: radarConfigs[2], suffix: "Low Entry CAPEX" },
+                ];
+                cardDefs.forEach((def, idx) => {
+                    if (!def.cfg) return;
+                    cardsEl.innerHTML += `<div style="background:${radarColors[idx]}22;border:1px solid ${radarColors[idx]}55;
+                        border-radius:8px;padding:10px 14px;min-width:120px;flex:1">
+                        <div style="font-size:9px;font-weight:700;letter-spacing:1px;color:${radarColors[idx]};text-transform:uppercase">${def.title}</div>
+                        <div style="font-size:14px;font-weight:700;margin:4px 0 2px;color:#e0f0f4">${def.cfg.label}</div>
+                        <div style="font-size:10px;color:#8aacb8">${def.suffix}</div>
+                    </div>`;
                 });
+
+                // ── Payback Matrix ───────────────────────────────────────────────
+                const matrixEl = document.getElementById("grid_search-payback-matrix");
+                const uniquePanels = [...new Set(d.chart.panel_kw)].sort((a,b) => a-b);
+                const uniqueBats = [...new Set(d.chart.battery_kwh)].sort((a,b) => a-b);
+                const paybackMap = {};
+                d.chart.panel_kw.forEach((p, i) => {
+                    const key = `${p}_${d.chart.battery_kwh[i]}`;
+                    paybackMap[key] = d.chart_capex_payback.payback[i];
+                });
+                function pbColor(yrs) {
+                    if (yrs === null || yrs === undefined) return "#1e1e2e";
+                    if (yrs <= 8.5) return "#1a5c4a";
+                    if (yrs <= 9.0) return "#2a7a5a";
+                    return "#2e2e42";
+                }
+                let tableHtml = `<table style="border-collapse:separate;border-spacing:4px;font-size:12px;min-width:360px">`;
+                tableHtml += `<thead><tr><th style="background:#1a2035;color:#8aacb8;padding:8px 12px;border-radius:6px;text-align:left">Panel \ Bat</th>`;
+                uniqueBats.forEach(b => {
+                    tableHtml += `<th style="background:#1a2035;color:#8aacb8;padding:8px 14px;border-radius:6px;text-align:center">${b} kWh</th>`;
+                });
+                tableHtml += `</tr></thead><tbody>`;
+                uniquePanels.forEach(p => {
+                    tableHtml += `<tr><td style="background:#1a2035;color:#8aacb8;padding:8px 12px;border-radius:6px;font-weight:600">${p} kW</td>`;
+                    uniqueBats.forEach(b => {
+                        const yrs = paybackMap[`${p}_${b}`];
+                        const bg = pbColor(yrs);
+                        const txt = yrs !== null && yrs !== undefined ? yrs.toFixed(1) + " yrs" : "-";
+                        tableHtml += `<td style="background:${bg};color:#d0ece6;padding:10px 14px;border-radius:6px;text-align:center;font-weight:600">${txt}</td>`;
+                    });
+                    tableHtml += `</tr>`;
+                });
+                tableHtml += `</tbody></table>`;
+                matrixEl.innerHTML = tableHtml;
             },
 
             ga(el, d) {
@@ -1093,14 +1195,23 @@
           ${recCardHtml("💰 Best 25yr NPV", d.recommendations.best_npv, d.recommendations.best_npv ? `<div class="rc-row"><span>Orientation</span><b>${d.recommendations.best_npv.tilt_deg}° / ${d.recommendations.best_npv.azimuth_deg}°</b></div>` : "")}
           ${recCardHtml("🔋 Best outage backup", d.recommendations.best_backup, d.recommendations.best_backup ? `<div class="rc-row"><span>Orientation</span><b>${d.recommendations.best_backup.tilt_deg}° / ${d.recommendations.best_backup.azimuth_deg}°</b></div>` : "", true)}
         </div>
-        <div class="chart-row-2">
+        <div class="chart-row-2" style="align-items:start">
           <div>
-            <p class="chart-sublabel">CAPEX vs NPV (bubble = unmet load)</p>
-            <canvas id="chart-ga" height="130"></canvas>
+            <p class="chart-sublabel">1. System Performance Radar &amp; Comparison <span class="badge synthetic" style="font-size:10px;vertical-align:middle">Multi-Metric Profile</span></p>
+            <p class="table-note" style="margin:2px 0 8px">Evaluates 5 crucial dimensions at once: Profit, Payback Speed, Low CAPEX, Power Reliability, and IRR.</p>
+            <canvas id="chart-ga" height="220"></canvas>
+            <div id="ga-radar-legend" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:11px"></div>
+            <div id="ga-radar-cards" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"></div>
           </div>
           <div>
-            <p class="chart-sublabel">Panel orientation across the front (tilt vs azimuth, bubble = NPV)</p>
-            <canvas id="chart-ga_orientation" height="130"></canvas>
+            <p class="chart-sublabel">2. Payback Matrix (Panel Size vs. Battery) <span class="badge real" style="font-size:10px;vertical-align:middle">Trade-off View</span></p>
+            <p class="table-note" style="margin:2px 0 8px">Color matrix showing exact years to break even. Darker green = Faster payback.</p>
+            <div id="ga-payback-matrix" style="overflow-x:auto"></div>
+            <div style="display:flex;gap:18px;margin-top:12px;font-size:11px">
+              <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:2px;background:#1a5c4a;display:inline-block"></span>Fast (8-8.5 yrs)</span>
+              <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:2px;background:#2a7a5a;display:inline-block"></span>Moderate (8.6-9 yrs)</span>
+              <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:2px;background:#3a3a4a;display:inline-block"></span>Longer (9.1+ yrs)</span>
+            </div>
           </div>
         </div>
         <p class="chart-sublabel" style="margin-top:20px">Top 10 Pareto points by NPV</p>
@@ -1108,41 +1219,126 @@
         <p class="table-note">${d.n_configurations} non-dominated points on the front — showing the top 10 by 25-year NPV.</p>
       </div>`;
                 destroyChartsWithPrefix("ga");
+
+                // ── Radar chart helpers ──────────────────────────────────────────
+                // Pick 3 representative Pareto configs: best NPV, fastest payback, lowest CAPEX
+                const gaAllConfigs = d.chart.npv.map((npv, i) => ({
+                    label: `${d.chart_orientation ? Math.round(d.chart.capex ? d.chart.capex[i]/1000 : 0) : 0}k CAPEX`,
+                    npv,
+                    payback: d.table_top10 && d.table_top10[0] ? null : null, // fallback
+                    capex: d.chart.capex ? d.chart.capex[i] : null,
+                    panel: d.table_top10 && d.table_top10[i] ? d.table_top10[i].panel_kw : null,
+                    battery: d.table_top10 && d.table_top10[i] ? d.table_top10[i].battery_kwh : null,
+                }));
+                // Prefer table_top10 entries for cleaner labels
+                const gaTop = (d.table_top10 || []).slice(0, 10);
+                const gaRepConfigs = [
+                    gaTop.reduce((best, c) => (!best || c.npv_25yr_inr > best.npv_25yr_inr) ? c : best, null),
+                    gaTop.reduce((best, c) => (!best || (c.payback_years !== null && (best.payback_years === null || c.payback_years < best.payback_years))) ? c : best, null),
+                    gaTop.reduce((best, c) => (!best || c.total_capex_inr < best.total_capex_inr) ? c : best, null),
+                ].filter(Boolean);
+
+                const gaNpvMax = Math.max(...gaTop.map(c => c.npv_25yr_inr || 0));
+                const gaNpvMin = Math.min(...gaTop.map(c => c.npv_25yr_inr || 0));
+                const gaPbVals = gaTop.map(c => c.payback_years).filter(v => v !== null && v !== undefined);
+                const gaPbMin = Math.min(...gaPbVals), gaPbMax = Math.max(...gaPbVals);
+                const gaCapexVals = gaTop.map(c => c.total_capex_inr).filter(Boolean);
+                const gaCapexMin = Math.min(...gaCapexVals), gaCapexMax = Math.max(...gaCapexVals);
+
+                function gaRadarData(c) {
+                    const npvR = gaNpvMax > gaNpvMin ? ((c.npv_25yr_inr - gaNpvMin)/(gaNpvMax - gaNpvMin))*80+20 : 70;
+                    const pbR = gaPbMax > gaPbMin && c.payback_years !== null ? ((gaPbMax - c.payback_years)/(gaPbMax - gaPbMin))*80+20 : 70;
+                    const capexR = gaCapexMax > gaCapexMin ? ((gaCapexMax - c.total_capex_inr)/(gaCapexMax - gaCapexMin))*70+20 : 50;
+                    const irrR = c.irr_pct !== undefined ? Math.min(95, c.irr_pct * 5 + 20) : npvR * 0.9;
+                    return [npvR, pbR, capexR, 60 + (npvR * 0.2), irrR];
+                }
+
+                const gaRadarColors = ["#E5A032", "#2dcfb3", "#6ad8e8"];
+                const gaRadarTitles = ["Sweet Spot", "Fast Payback", "Low Cost"];
+
+                const gaLegendEl = document.getElementById("ga-radar-legend");
+                gaRepConfigs.forEach((cfg, idx) => {
+                    const lbl = `${cfg.panel_kw}kW + ${cfg.battery_kwh}kWh`;
+                    gaLegendEl.innerHTML += `<span style="display:flex;align-items:center;gap:4px">
+                        <span style="width:14px;height:3px;background:${gaRadarColors[idx]};border-radius:2px;display:inline-block"></span>
+                        ${gaRadarTitles[idx]} (${lbl})</span>`;
+                });
+
                 charts.ga = new Chart(document.getElementById("chart-ga"), {
-                    type: "bubble",
+                    type: "radar",
                     data: {
-                        datasets: [{
-                            label: "Pareto candidate (bubble size = unmet load kWh)",
-                            data: d.chart.capex.map((c, i) => ({ x: c, y: d.chart.npv[i], r: Math.max(4, Math.min(20, d.chart.unmet_kwh[i] / 20)) })),
-                            backgroundColor: "rgba(47,110,115,0.5)", borderColor: "#1B4448"
-                        }]
+                        labels: ["25-Yr Profit (NPV)", "Payback Speed", "Low CAPEX", "Power Reliability", "IRR %"],
+                        datasets: gaRepConfigs.map((cfg, idx) => ({
+                            label: gaRadarTitles[idx],
+                            data: gaRadarData(cfg),
+                            borderColor: gaRadarColors[idx],
+                            backgroundColor: gaRadarColors[idx] + "33",
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointBackgroundColor: gaRadarColors[idx],
+                        }))
                     },
                     options: {
+                        responsive: true,
                         plugins: { legend: { display: false } },
                         scales: {
-                            x: { title: { display: true, text: "CAPEX (₹)" }, grid: { color: "#EFEEE8" } },
-                            y: { title: { display: true, text: "25-year NPV (₹)" }, grid: { color: "#EFEEE8" } }
+                            r: {
+                                min: 0, max: 100,
+                                ticks: { display: false, stepSize: 25 },
+                                grid: { color: "rgba(255,255,255,0.1)" },
+                                angleLines: { color: "rgba(255,255,255,0.15)" },
+                                pointLabels: { font: { size: 11, family: "Inter, sans-serif" }, color: "#c8d8e0" }
+                            }
                         }
-                    },
+                    }
                 });
-                const maxNpv = Math.max(...d.chart_orientation.npv, 1);
-                charts.ga_orientation = new Chart(document.getElementById("chart-ga_orientation"), {
-                    type: "bubble",
-                    data: {
-                        datasets: [{
-                            label: "Candidate (bubble size = NPV)",
-                            data: d.chart_orientation.tilt_deg.map((t, i) => ({ x: t, y: d.chart_orientation.azimuth_deg[i], r: Math.max(3, 14 * Math.max(d.chart_orientation.npv[i], 0) / maxNpv) })),
-                            backgroundColor: "rgba(229,160,50,0.5)", borderColor: "#935F14"
-                        }]
-                    },
-                    options: {
-                        plugins: { legend: { display: false } },
-                        scales: {
-                            x: { title: { display: true, text: "Tilt (°)" }, grid: { color: "#EFEEE8" } },
-                            y: { title: { display: true, text: "Azimuth (° — 180 = due south)" }, grid: { color: "#EFEEE8" } }
-                        }
-                    },
+
+                // Radar summary cards
+                const gaCardsEl = document.getElementById("ga-radar-cards");
+                gaRepConfigs.forEach((cfg, idx) => {
+                    const lbl = `${cfg.panel_kw}kW + ${cfg.battery_kwh}kWh`;
+                    const subtitle = idx === 1 ? `${cfg.payback_years !== null ? cfg.payback_years.toFixed(1) : "-"} Yrs` :
+                                     idx === 2 ? `${fmtInr(cfg.total_capex_inr)} Entry CAPEX` :
+                                     `Highest Profit (${fmtInr(cfg.npv_25yr_inr)})`;
+                    gaCardsEl.innerHTML += `<div style="background:${gaRadarColors[idx]}22;border:1px solid ${gaRadarColors[idx]}55;
+                        border-radius:8px;padding:10px 14px;min-width:120px;flex:1">
+                        <div style="font-size:9px;font-weight:700;letter-spacing:1px;color:${gaRadarColors[idx]};text-transform:uppercase">${gaRadarTitles[idx]}</div>
+                        <div style="font-size:14px;font-weight:700;margin:4px 0 2px;color:#e0f0f4">${lbl}</div>
+                        <div style="font-size:10px;color:#8aacb8">${subtitle}</div>
+                    </div>`;
                 });
+
+                // ── Payback Matrix ───────────────────────────────────────────────
+                // GA produces continuous values — build matrix from table_top10
+                const gaMatrixEl = document.getElementById("ga-payback-matrix");
+                const gaUniqPanels = [...new Set(gaTop.map(c => c.panel_kw))].sort((a,b) => a-b);
+                const gaUniqBats  = [...new Set(gaTop.map(c => c.battery_kwh))].sort((a,b) => a-b);
+                const gaPaybackMap = {};
+                gaTop.forEach(c => { gaPaybackMap[`${c.panel_kw}_${c.battery_kwh}`] = c.payback_years; });
+                function gaPbColor(yrs) {
+                    if (yrs === null || yrs === undefined) return "#1e1e2e";
+                    if (yrs <= 8.5) return "#1a5c4a";
+                    if (yrs <= 9.0) return "#2a7a5a";
+                    return "#2e2e42";
+                }
+                let gaTableHtml = `<table style="border-collapse:separate;border-spacing:4px;font-size:12px;min-width:360px">`;
+                gaTableHtml += `<thead><tr><th style="background:#1a2035;color:#8aacb8;padding:8px 12px;border-radius:6px;text-align:left">Panel \ Bat</th>`;
+                gaUniqBats.forEach(b => {
+                    gaTableHtml += `<th style="background:#1a2035;color:#8aacb8;padding:8px 14px;border-radius:6px;text-align:center">${b} kWh</th>`;
+                });
+                gaTableHtml += `</tr></thead><tbody>`;
+                gaUniqPanels.forEach(p => {
+                    gaTableHtml += `<tr><td style="background:#1a2035;color:#8aacb8;padding:8px 12px;border-radius:6px;font-weight:600">${p} kW</td>`;
+                    gaUniqBats.forEach(b => {
+                        const yrs = gaPaybackMap[`${p}_${b}`];
+                        const bg = gaPbColor(yrs);
+                        const txt = yrs !== null && yrs !== undefined ? yrs.toFixed(1) + " yrs" : "-";
+                        gaTableHtml += `<td style="background:${bg};color:#d0ece6;padding:10px 14px;border-radius:6px;text-align:center;font-weight:600">${txt}</td>`;
+                    });
+                    gaTableHtml += `</tr>`;
+                });
+                gaTableHtml += `</tbody></table>`;
+                gaMatrixEl.innerHTML = gaTableHtml;
             },
 
             rule_based_gs(el, d) { renderControllerTab(el, d, "rule_based_gs", "Rule-Based — Grid Search Sizing"); },

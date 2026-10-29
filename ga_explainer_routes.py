@@ -109,6 +109,7 @@ from pymoo.termination import get_termination
 from src.grid.grid_model import GridModel
 from src.sizing.grid_search import simulate_system_size
 from src.sizing.nsga2_sizing import SizingProblem
+from src.resource_limits import resolve_worker_count
 
 
 router = APIRouter(prefix="/api/ga-explainer", tags=["ga-explainer"])
@@ -249,7 +250,7 @@ def _run_ga_explainer(job_id: str, req: GAExplainerStartRequest) -> None:
             maintenance_cost_annual_inr=2000.0,
         )
 
-        n_workers = req.n_workers if req.n_workers is not None else (os.cpu_count() or 1)
+        n_workers = resolve_worker_count(req.n_workers)
         pool = None
         elementwise_runner = LoopedElementwiseEvaluation()
         if n_workers > 1:

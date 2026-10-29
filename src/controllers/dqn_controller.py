@@ -193,10 +193,12 @@ class DQNController(BaseController):
         self.safety_shield = SafetyShield()
         self.expected_shape = None
 
-        # Maximize CPU core utilization for PyTorch inferences
+        # Inference is called from a resource-intensive simulation. Letting
+        # every worker create a full-size PyTorch thread pool oversubscribes
+        # the host and can exhaust memory when sizing runs in parallel.
         try:
             import torch
-            torch.set_num_threads(os.cpu_count() or 1)
+            torch.set_num_threads(1)
         except Exception:
             pass
 
@@ -297,4 +299,3 @@ class DQNController(BaseController):
             if len(valid_actions) > 0:
                 return int(valid_actions[0])
         return 0
-

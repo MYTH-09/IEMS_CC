@@ -40,6 +40,7 @@ from src.environment.energy_env import EnergyEnv
 from src.grid.grid_model import GridModel
 from src.controllers.rule_based import RuleBasedController
 from src.report.financials import full_financial_analysis, FinancialSummary
+from src.resource_limits import resolve_worker_count
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -217,7 +218,7 @@ def run_grid_search(
         discount-rate parameters, forwarded to `full_financial_analysis`).
     n_workers : Optional[int]
         Number of worker PROCESSES to score combinations in parallel.
-        - None (default): auto-detect via os.cpu_count(), capped at 8.
+        - None (default): use a conservative default of up to 4 workers.
         - 1: disables parallelization — runs serially (easier debugging).
         - N: use exactly N worker processes.
         Each combination's year-long simulation is fully independent of
@@ -231,8 +232,7 @@ def run_grid_search(
         annual_unmet_load_kwh, outage_steps_covered, annual_savings_inr,
         total_capex_inr, payback_years, npv_25yr_inr, irr_pct
     """
-    if n_workers is None:
-        n_workers = os.cpu_count() or 1
+    n_workers = resolve_worker_count(n_workers)
 
     combos = [(p, b) for p in panel_sizes_kw for b in battery_sizes_kwh]
     total = len(combos)

@@ -52,6 +52,7 @@ from src.pipeline.orchestrator import (
     create_job, run_pipeline_job, get_job_status, get_stage_result, STAGE_DEPENDENCIES,
 )
 from src.pipeline.stage_functions import STAGE_FUNCTIONS
+from src.resource_limits import resolve_worker_count
 
 
 router = APIRouter(prefix="/api/pipeline", tags=["pipeline-demo"])
@@ -94,7 +95,7 @@ async def start_pipeline(req: PipelineStartRequest) -> dict:
         "monthly_bill_inr": req.monthly_bill_inr,
         "city": city_name,
         "financial_config": _build_financial_config(req.subsidy_eligible),
-        "n_workers": req.n_workers if req.n_workers is not None else (os.cpu_count() or 1),
+        "n_workers": resolve_worker_count(req.n_workers),
         "ga_pop_size": req.ga_pop_size,
         "ga_n_gen": req.ga_n_gen,
     }

@@ -67,6 +67,7 @@ from pymoo.termination import get_termination
 from src.grid.grid_model import GridModel
 from src.sizing.grid_search import simulate_system_size
 from src.report.financials import full_financial_analysis
+from src.resource_limits import resolve_worker_count
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -212,7 +213,7 @@ def run_nsga2(
         real-run size; reduce both for a fast smoke test (e.g. 8×3=24).
     n_workers : Optional[int]
         Number of worker PROCESSES to evaluate candidates in parallel.
-        - None (default): auto-detect via os.cpu_count(), capped at 8
+        - None (default): use a conservative default of up to 4 workers
           (diminishing returns beyond that for a problem this size, and
           avoids accidentally oversubscribing a shared machine).
         - 1: disables parallelization entirely — runs serially in the
@@ -235,8 +236,7 @@ def run_nsga2(
     columns: panel_kw, battery_kwh, tilt_deg, azimuth_deg, total_capex_inr,
     npv_25yr_inr, payback_years, annual_unmet_load_kwh.
     """
-    if n_workers is None:
-        n_workers = os.cpu_count() or 1
+    n_workers = resolve_worker_count(n_workers)
 
     logger.info(
         f"Running NSGA-II: pop_size={pop_size}, generations={n_generations} "

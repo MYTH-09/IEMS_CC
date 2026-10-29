@@ -56,6 +56,12 @@ uvicorn app:app --reload --port 8000
 Backend API will be running at: `http://localhost:8000`  
 Interactive API Docs: `http://localhost:8000/docs`
 
+The sizing and pipeline endpoints default to at most 4 worker processes.
+This is intentional: the background pipeline runs grid search and NSGA-II
+concurrently, so using all detected CPU cores for each stage can create more
+processes than the machine can safely handle. To reduce load further, send
+`"n_workers": 1` in the API request.
+
 ### Step 2: Open the Interactive Pipeline Demo
 You can open `pipeline_demo.html` directly in your browser or run a simple local web server:
 ```bash

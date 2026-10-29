@@ -46,6 +46,7 @@ from src.controllers.mpc_controller import MPCController
 from src.controllers.dqn_controller import DQNController
 from src.sizing.grid_search import run_grid_search, top_recommendations, simulate_system_size
 from src.report.financials import full_financial_analysis
+from src.resource_limits import resolve_worker_count
 
 try:
     from src.environment.forecast_provider import ForecastProvider
@@ -305,7 +306,7 @@ async def stage_grid_search(params: dict, get_upstream: Callable) -> dict:
         battery_sizes = [0.0, 5.0, 7.5, 10.0, 15.0, 20.0]
         financial_config = params["financial_config"]
 
-        workers = params.get("n_workers") or os.cpu_count() or 1
+        workers = resolve_worker_count(params.get("n_workers"))
         df = run_grid_search(load_kw, solar_kw_per_kwp, timestamps, grid,
                               panel_sizes, battery_sizes, financial_config,
                               seed=42, n_workers=workers)
@@ -375,7 +376,7 @@ async def stage_ga(params: dict, get_upstream: Callable) -> dict:
                                           episode_days=365, seed=42)
         baseline_cost = baseline["annual_cost_inr"]
 
-        workers = params.get("n_workers") or os.cpu_count() or 1
+        workers = resolve_worker_count(params.get("n_workers"))
         pareto = run_nsga2(load_kw=load_kw, timestamps=timestamps, grid=grid,
                             solar_curve_fn=_FixedSolarCurve(solar_per_kwp), financial_config=params["financial_config"],
                             baseline_annual_cost_inr=baseline_cost,
