@@ -75,47 +75,36 @@ class ForecastProvider:
         idx = env._data_idx if current_idx is None else current_idx
         solar_kw = env.solar_kw
         load_kw = env.load_kw
-        timestamps = env.timestamps
-        grid = env.grid
-        battery = env.battery
-
-        n_total = len(solar_kw)
-        max_idx = n_total - 1
+        max_idx = len(solar_kw) - 1
         safe_idx = min(idx, max_idx)
-        current_ts = timestamps[safe_idx]
+
+        if not self.training_mode and getattr(self, "_fc_cache_key", None) == (id(env), safe_idx):
+            return self._fc_cache_val
 
         step_1h = 4
         step_3h = 12
         step_6h = 24
+        e1 = min(safe_idx + step_1h, max_idx + 1)
+        e3 = min(safe_idx + step_3h, max_idx + 1)
+        e6 = min(safe_idx + step_6h, max_idx + 1)
 
-        # Extract future slices with edge padding
-        def _get_slice(start_step: int, end_step: int, array: np.ndarray) -> np.ndarray:
-            s = min(safe_idx + start_step, max_idx)
-            e = min(safe_idx + end_step, max_idx)
-            if s >= e:
-                return np.full(end_step - start_step, array[max_idx], dtype=np.float32)
-            segment = array[s:e]
-            if len(segment) < (end_step - start_step):
-                pad_len = (end_step - start_step) - len(segment)
-                pad = np.full(pad_len, array[max_idx], dtype=np.float32)
-                segment = np.concatenate([segment, pad])
-            return segment
+        # ── 1. Solar and Load generation forecasts ────────────────────────────
+        mean_solar_1h = float(np.mean(solar_kw[safe_idx:e1]))
+        mean_solar_3h = float(np.mean(solar_kw[safe_idx:e3]))
+        mean_solar_6h = float(np.mean(solar_kw[safe_idx:e6]))
 
-        future_solar_1h = _get_slice(0, step_1h, solar_kw)
-        future_solar_3h = _get_slice(0, step_3h, solar_kw)
-        future_solar_6h = _get_slice(0, step_6h, solar_kw)
+        mean_load_3h = float(np.mean(load_kw[safe_idx:e3]))
+        mean_load_6h = float(np.mean(load_kw[safe_idx:e6]))
 
-        future_load_3h = _get_slice(0, step_3h, load_kw)
-        future_load_6h = _get_slice(0, step_6h, load_kw)
+        # Fast vectorized future hours from precomputed arrays in env
+        if hasattr(env, "_hours_float"):
+            future_hours = env._hours_float[safe_idx:e6]
+        else:
+            future_hours = (env._hours[safe_idx:e6] + env._minutes[safe_idx:e6] / 60.0).astype(np.float32)
 
-        # ── 1. Solar generation forecasts ─────────────────────────────────────
-        # Theoretical clear sky model for time of day to estimate cloud cover
-        # STC estimate: peak around solar noon (12:00-13:00)
-        future_hours = np.array([
-            (timestamps[min(safe_idx + k, max_idx)].hour +
-             timestamps[min(safe_idx + k, max_idx)].minute / 60.0)
-            for k in range(step_6h)
-        ])
+        if len(future_hours) < step_6h:
+            pad = np.full(step_6h - len(future_hours), future_hours[-1] if len(future_hours) > 0 else 12.0, dtype=np.float32)
+            future_hours = np.concatenate([future_hours, pad])
 
         # Estimate clear-sky potential based on daylight hours (06:00 to 18:30)
         daylight_mask = (future_hours >= 6.0) & (future_hours <= 18.5)
@@ -123,64 +112,50 @@ class ForecastProvider:
         clear_sky_curve[daylight_mask] = np.sin(
             np.pi * (future_hours[daylight_mask] - 6.0) / 12.5
         )
-        # Scale to max capacity observed or default 5 kWp
         max_pot = max(float(np.max(solar_kw[:min(len(solar_kw), 960)])), 3.0)
         clear_sky_kw = clear_sky_curve * max_pot
 
-        # Base physical future solar (mean over horizon)
-        mean_solar_1h = float(np.mean(future_solar_1h))
-        mean_solar_3h = float(np.mean(future_solar_3h))
-        mean_solar_6h = float(np.mean(future_solar_6h))
-
-        mean_load_3h = float(np.mean(future_load_3h))
-        mean_load_6h = float(np.mean(future_load_6h))
-
         # ── 2. Cloud cover & Rain probability ─────────────────────────────────
-        # Cloud cover is inferred from solar depression below clear sky during daylight
         def _calc_cloud_cover(actual_slice: np.ndarray, clear_slice: np.ndarray, hours_slice: np.ndarray) -> float:
             day_mask = (hours_slice >= 7.0) & (hours_slice <= 17.5)
             if not np.any(day_mask):
-                # Nighttime: persistent cloud cover estimated from recent daytime or 0.1
                 return 0.15
-            clear_sub = clear_slice[day_mask]
-            actual_sub = actual_slice[day_mask]
-            # Ratio of suppression
-            clear_total = np.sum(clear_sub)
+            clear_total = np.sum(clear_slice[day_mask])
             if clear_total < 1e-3:
                 return 0.15
-            suppression = 1.0 - (np.sum(actual_sub) / (clear_total + 1e-4))
+            suppression = 1.0 - (np.sum(actual_slice[day_mask]) / (clear_total + 1e-4))
             return float(np.clip(suppression, 0.0, 1.0))
 
-        cloud_1h = _calc_cloud_cover(future_solar_1h, clear_sky_kw[:step_1h], future_hours[:step_1h])
-        cloud_3h = _calc_cloud_cover(future_solar_3h, clear_sky_kw[:step_3h], future_hours[:step_3h])
-        cloud_6h = _calc_cloud_cover(future_solar_6h, clear_sky_kw[:step_6h], future_hours[:step_6h])
+        s1_pad = solar_kw[safe_idx:e1]
+        if len(s1_pad) < step_1h:
+            s1_pad = np.pad(s1_pad, (0, step_1h - len(s1_pad)), 'edge')
+        s3_pad = solar_kw[safe_idx:e3]
+        if len(s3_pad) < step_3h:
+            s3_pad = np.pad(s3_pad, (0, step_3h - len(s3_pad)), 'edge')
+        s6_pad = solar_kw[safe_idx:e6]
+        if len(s6_pad) < step_6h:
+            s6_pad = np.pad(s6_pad, (0, step_6h - len(s6_pad)), 'edge')
 
-        # Rain probability correlates with heavy cloud cover and season (monsoon months June-Sept in India)
-        current_month = current_ts.month
+        cloud_1h = _calc_cloud_cover(s1_pad, clear_sky_kw[:step_1h], future_hours[:step_1h])
+        cloud_3h = _calc_cloud_cover(s3_pad, clear_sky_kw[:step_3h], future_hours[:step_3h])
+        cloud_6h = _calc_cloud_cover(s6_pad, clear_sky_kw[:step_6h], future_hours[:step_6h])
+
+        current_month = int(env._months[safe_idx])
         monsoon_boost = 0.25 if (6 <= current_month <= 9) else 0.05
 
-        # If daytime solar drops severely during high clear sky, rain/storm likelihood is elevated
         rain_prob_1h = float(np.clip(cloud_1h * 0.75 + monsoon_boost, 0.0, 1.0))
         rain_prob_3h = float(np.clip(cloud_3h * 0.70 + monsoon_boost, 0.0, 1.0))
         rain_prob_6h = float(np.clip(cloud_6h * 0.65 + monsoon_boost, 0.0, 1.0))
 
-        # ── 3. Outage probability ─────────────────────────────────────────────
-        # Peak hours from grid configuration (e.g. 10, 14, 18, 22)
-        peak_hours = getattr(grid, "_outage_peak_hours", [10, 14, 18, 22])
+        # ── 3. Outage probability (vectorized) ────────────────────────────────
+        peak_hours = getattr(env.grid, "_outage_peak_hours", [10, 14, 18, 22])
 
         def _calc_outage_prob(step_horizon: int, rain_p: float) -> float:
-            probs = []
-            for step_offset in range(step_horizon):
-                step_idx = min(safe_idx + step_offset, max_idx)
-                ts_step = timestamps[step_idx]
-                h = int(ts_step.hour)
-                # Baseline hazard
-                h_prob = 0.75 if h in peak_hours else 0.15
-                # Weather-induced grid cut risk (storms/rain frequently cause trips in Indian distribution)
-                w_prob = h_prob + (rain_p * 0.25)
-                probs.append(min(1.0, w_prob))
-            # Probability of at least one outage in the window
-            return float(np.clip(np.max(probs), 0.0, 1.0))
+            end_idx = min(safe_idx + step_horizon, max_idx + 1)
+            h_slice = env._hours[safe_idx:end_idx]
+            h_prob = np.where(np.isin(h_slice, peak_hours), 0.75, 0.15)
+            w_prob = h_prob + (rain_p * 0.25)
+            return float(np.clip(np.max(w_prob), 0.0, 1.0))
 
         outage_prob_1h = _calc_outage_prob(step_1h, rain_prob_1h)
         outage_prob_3h = _calc_outage_prob(step_3h, rain_prob_3h)
@@ -217,11 +192,14 @@ class ForecastProvider:
         expected_load_kwh_3h = mean_load_3h * (step_3h * dt)
         expected_deficit_kwh_3h = max(0.0, expected_load_kwh_3h - expected_solar_kwh_3h)
 
-        battery_cap = max(float(battery.capacity_kwh), 1.0)
+        battery = getattr(env, "battery", None)
+        battery_cap = max(float(battery.capacity_kwh), 1.0) if battery is not None else 10.0
+        min_soc = float(battery.min_soc) if battery is not None else 0.10
+        max_soc = float(battery.max_soc) if battery is not None else 0.95
         # Required SOC to survive expected deficit during outage risk
         risk_weight = max(outage_prob_3h, rain_prob_3h * 0.8)
         soc_headroom = (expected_deficit_kwh_3h * risk_weight) / battery_cap
-        required_soc = float(np.clip(float(battery.min_soc) + soc_headroom, float(battery.min_soc), float(battery.max_soc)))
+        required_soc = float(np.clip(min_soc + soc_headroom, min_soc, max_soc))
 
         # Normalize outputs to [0, 1]
         p_norm = self.power_norm_kw
@@ -245,6 +223,10 @@ class ForecastProvider:
             "forecast_deficit_3h_kwh": float(expected_deficit_kwh_3h),
             "forecast_confidence": float(confidence),
         }
+        if not self.training_mode:
+            self._fc_cache_key = (id(env), safe_idx)
+            self._fc_cache_val = res
+        return res
 
     def get_forecast_vector(self, env, current_idx: Optional[int] = None) -> np.ndarray:
         """

@@ -202,7 +202,7 @@ class DQNController(BaseController):
         except Exception:
             pass
 
-        # Resolve candidate paths (prioritize smart model, then checkpoints, then legacy)
+        # Resolve smart forecast-aware DQN model paths (32-dim policy only)
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         candidates = []
         if model_path:
@@ -211,16 +211,9 @@ class DQNController(BaseController):
         candidates.extend([
             os.path.join(project_root, "models", "dqn_smart_policy.zip"),
             os.path.join(project_root, "models", "checkpoints_smart", "best_model.zip"),
-            os.path.join(project_root, "models", "checkpoints", "best_model.zip"),
-            os.path.join(project_root, "models", "dqn_policy.zip"),
             "models/dqn_smart_policy.zip",
             "models/checkpoints_smart/best_model.zip",
-            "models/checkpoints/best_model.zip",
-            "models/dqn_policy.zip",
         ])
-        if model_path and model_path not in candidates:
-            candidates.append(model_path)
-            candidates.append(os.path.join(project_root, model_path))
 
         resolved_path = None
         for p in candidates:
@@ -228,7 +221,7 @@ class DQNController(BaseController):
                 resolved_path = p
                 break
 
-        self.model_path = resolved_path or (model_path or "models/checkpoints/best_model.zip")
+        self.model_path = resolved_path or (model_path or "models/dqn_smart_policy.zip")
 
         if _SB3_AVAILABLE and DQN is not None and resolved_path and os.path.exists(resolved_path):
             try:
@@ -238,15 +231,15 @@ class DQNController(BaseController):
                     "shape",
                     None,
                 )
-                if model_shape not in ((32,), (17,), (13,)):
+                if model_shape != (32,):
                     logger.warning(
                         f"DQN model has unexpected shape {model_shape}. "
-                        "Expected (32,), (17,), or (13,). Using heuristic policy."
+                        "Expected (32,) forecast-aware policy. Rejecting legacy model."
                     )
                     self.model = _TrainedQPolicy()
                 else:
                     self.expected_shape = model_shape
-                    logger.info(f"Loaded DQN neural weights from {resolved_path} (input shape {model_shape})")
+                    logger.info(f"Loaded Forecast-Aware DQN neural weights from {resolved_path} (input shape {model_shape})")
             except Exception as e:
                 logger.warning(f"Could not load DQN from {resolved_path} ({e}). Falling back to heuristic policy.")
                 self.model = _TrainedQPolicy()

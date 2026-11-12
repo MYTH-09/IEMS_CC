@@ -150,26 +150,42 @@ Simulates standard solar inverter logic on the Grid-Search recommended hardware 
 #### Intention & Purpose
 Compares conventional rule-based inverter control against Deep Q-Network (Reinforcement Learning / AI) control on custom GA-sized hardware.
 
+#### Dual-Candidate Sizing Evaluation
+Both controllers now evaluate **both** primary objectives identified by Genetic Algorithm Pareto optimization:
+1. **Best Outage Backup:** Maximum blackout resilience (0 unmet load, larger battery reserve).
+2. **Best 25-Year NPV:** Optimum techno-economic capital return (balanced panel/battery size).
+Users can interactively switch between the two configurations using the toggle bar on the dashboard.
+
 #### Key Terms & Differences
-- **DQN (Deep Q-Network)**: An intelligent controller that learns to look ahead.
-- **Pre-charging for Outages**: Unlike simple inverters, the DQN controller anticipates evening power cuts and ensures the battery is charged before blackouts occur.
+- **DQN (Deep Q-Network)**: An intelligent controller that learns to look ahead using a 32-dimensional observation vector (physical battery state, solar forecast, cloud cover, and outage hazards).
+- **Pre-charging for Outages**: Unlike simple inverters, the DQN controller anticipates upcoming grid outages and inclement weather, ensuring the battery is pre-charged before blackouts occur.
 - **Tariff Arbitrage**: Preserves battery energy for peak evening electricity slab rates to save extra money on bills.
 
 #### Web Output & Graphs
 - Side-by-side comparison of battery State of Charge and grid import reduction.
+- Full 30-day daily energy flow breakdown (grid import, solar export, battery cycling).
 
 ---
 
 ### Tab 7: Final Report (Outage Proof)
 
 #### Intention & Purpose
-Summarizes all simulation results into a clear, bankable contractor proposal for the homeowner.
+Summarizes all simulation results into a clear, bankable contractor proposal for the homeowner and project review panel.
 
 #### Web Output & Deliverables
-1. Three clean choice cards (Fastest Payback, Best 25-Yr Return, Best Outage Protection).
-2. Exact bill savings per month and per year.
-3. Detailed breakdown of Equipment Cost, Government Subsidy, and Net Cost.
-4. Outage Coverage Score: Verified percentage of blackout hours completely bridged by solar and battery storage.
+1. **25-Year Best NPV Deep Dive Dashboard**:
+   - Compares **GA + Rule-Based** vs **GA + Smart DQN** on the exact same 25-Year Best NPV hardware.
+   - Highlights 4 Key Uplift Badges:
+     - **$\Delta$ Lifetime NPV:** Extra ₹ and % net present value over 25 years.
+     - **$\Delta$ Annual Savings:** Extra ₹/year in reduced electricity bills.
+     - **$\Delta$ Payback:** Years faster capital amortization.
+     - **$\Delta$ Reliability:** Percentage outage protection uplift and kWh deficit prevented.
+   - Full side-by-side techno-economic comparison table.
+   - Executive panel takeaway highlighting the lookahead weather-aware advantages of DQN over heuristic thresholds.
+2. **Three-Way Combination Matrix**:
+   - Grid Search + Rule-Based vs GA + Rule-Based vs GA + DQN.
+   - Bar and line chart comparing outage exposure hours against annualized cost.
+   - Comprehensive comparative table with CAPEX, 25-Year NPV, Payback, Annual Savings, and Outage Coverage.
 
 ---
 

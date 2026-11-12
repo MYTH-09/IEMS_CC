@@ -197,6 +197,9 @@ class EnergyEnv(gym.Env):
         self._minutes   = primary["minutes"]
         self._months    = primary["months"]
         self._dayofweek = primary["dayofweek"]
+        self._hours_float = (self._hours + self._minutes / 60.0).astype(np.float32)
+        self._cached_obs = None
+        self._cached_obs_key = None
         self._last_is_outage = False
         self.dt_hours   = dt_hours
 
@@ -333,6 +336,9 @@ class EnergyEnv(gym.Env):
         self._minutes   = household["minutes"]
         self._months    = household["months"]
         self._dayofweek = household["dayofweek"]
+        self._hours_float = (self._hours + self._minutes / 60.0).astype(np.float32)
+        self._cached_obs = None
+        self._cached_obs_key = None
         self._last_is_outage = False
         self.battery_config = dict(household["battery_config"])
         self.battery = BatteryModel(**self.battery_config)
@@ -542,6 +548,10 @@ class EnergyEnv(gym.Env):
     # ── Observation / info ──────────────────────────────────────────────────
 
     def _get_observation(self) -> np.ndarray:
+        cache_key = (self._data_idx, round(float(self.battery.soc), 4), round(self._cumulative_units_this_month, 2), bool(getattr(self, "_last_is_outage", False)))
+        if getattr(self, "_cached_obs_key", None) == cache_key:
+            return self._cached_obs
+
         idx = min(self._data_idx, len(self.load_kw) - 1)
         ts  = self.timestamps[idx]
 
@@ -564,7 +574,7 @@ class EnergyEnv(gym.Env):
             self.load_kw[source_idx] / self._max_power_kw, 0, 1
         )
 
-        hour = float(self._hours[idx]) + float(self._minutes[idx]) / 60.0
+        hour = float(self._hours_float[idx])
         hour_sin = np.sin(2 * np.pi * hour / 24.0)
         hour_cos = np.cos(2 * np.pi * hour / 24.0)
         month_sin = np.sin(2 * np.pi * float(self._months[idx]) / 12.0)
@@ -601,9 +611,13 @@ class EnergyEnv(gym.Env):
 
         if self.use_forecast and self.forecast_provider is not None:
             fc_vec = self.forecast_provider.get_forecast_vector(self, idx)
-            return np.concatenate([base_obs, fc_vec]).astype(np.float32)
+            obs = np.concatenate([base_obs, fc_vec]).astype(np.float32)
+        else:
+            obs = base_obs
 
-        return base_obs
+        self._cached_obs_key = cache_key
+        self._cached_obs = obs
+        return obs
 
     def get_observation_with_forecast(self) -> np.ndarray:
         """

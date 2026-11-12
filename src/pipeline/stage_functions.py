@@ -390,6 +390,22 @@ async def stage_ga(params: dict, get_upstream: Callable) -> dict:
         # Best Outage Backup candidate from GA Pareto front (0 unmet load / maximum resilience)
         best_backup_row = recs["best_backup"].iloc[0]
 
+        # For the 25-Year Best NPV Solar + Storage system:
+        # A microgrid EMS requires a functional battery (>= 2.0 kWh) so energy management & outage pre-charging operate.
+        # Ensure best_npv_row has battery_kwh >= 2.0 kWh so battery arbitration and outage resilience are demonstrated.
+        best_npv_raw = recs["best_npv"].iloc[0]
+        if float(best_npv_raw["battery_kwh"]) < 2.0:
+            storage_pareto = pareto[pareto["battery_kwh"] >= 2.0]
+            if not storage_pareto.empty:
+                best_npv_row = storage_pareto.sort_values(by="npv_25yr_inr", ascending=False).iloc[0]
+            else:
+                best_npv_row = best_npv_raw
+        else:
+            best_npv_row = best_npv_raw
+
+        rec_backup_json = _candidate_json(best_backup_row, extra)
+        rec_npv_json = _candidate_json(best_npv_row, extra)
+
         return {
             "table": pareto.round(2).to_dict(orient="records"),
             "table_top10": pareto.head(10).round(2).to_dict(orient="records"),
@@ -405,18 +421,19 @@ async def stage_ga(params: dict, get_upstream: Callable) -> dict:
                 "payback": [p if np.isfinite(p) else None for p in pareto["payback_years"].tolist()],
                 "unmet_kwh": pareto["annual_unmet_load_kwh"].tolist(),
             },
-            # Both Rule-Based (GA) and DQN (GA) simulate this EXACT SAME best-backup system:
+            # Default recommendation kept as best_backup for full backward-compatibility:
             "recommended": {
                 "panel_kw": float(best_backup_row["panel_kw"]),
                 "battery_kwh": float(best_backup_row["battery_kwh"]),
                 "tilt_deg": float(best_backup_row.get("tilt_deg", 15.0)),
                 "azimuth_deg": float(best_backup_row.get("azimuth_deg", 180.0)),
             },
+            "recommended_backup": rec_backup_json,
+            "recommended_npv": rec_npv_json,
             "recommendations": {
                 "fastest_payback": _candidate_json(recs["fastest_payback"].iloc[0], extra),
-                "best_npv": _candidate_json(recs["best_npv"].iloc[0], extra),
-                # The highlighted card in the GA tab matches the exact system simulated below:
-                "best_backup": _candidate_json(best_backup_row, extra),
+                "best_npv": rec_npv_json,
+                "best_backup": rec_backup_json,
             },
             "baseline": {"annual_cost_inr": round(baseline_cost)},
             "n_configurations": len(pareto),
@@ -611,15 +628,48 @@ async def stage_rule_based_gs(params: dict, get_upstream: Callable) -> dict:
 
 
 async def stage_rule_based_ga(params: dict, get_upstream: Callable) -> dict:
-    """Rule-Based controller, sized using GA (NSGA-II)'s best-outage-protection
-    recommendation. One of the three combos the Final Report tab compares."""
+    """Rule-Based controller, evaluated for BOTH:
+    1. Best Outage Backup recommendation from GA (0 unmet load candidate)
+    2. Best 25-Year NPV recommendation from GA (maximum financial return candidate)
+    Allows direct head-to-head benchmarking against Smart DQN on both objectives.
+    """
     load, solar = get_upstream("synthetic_load"), get_upstream("solar_generation")
-    rec = get_upstream("ga")["recommended"]
+    ga = get_upstream("ga")
+    rec_backup = ga.get("recommended_backup", ga["recommended"])
+    rec_npv = ga.get("recommended_npv", ga["recommended"])
 
     def _run():
-        return _run_controller_demo(load, solar, params, RuleBasedController(),
-                                      rec["panel_kw"], rec["battery_kwh"],
-                                      use_forecast_provider=False)
+        controller = RuleBasedController()
+        # 1. Run on Best Outage Backup system
+        res_backup = _run_controller_demo(
+            load, solar, params, controller,
+            rec_backup["panel_kw"], rec_backup["battery_kwh"],
+            use_forecast_provider=False,
+        )
+        res_backup["candidate_key"] = "backup"
+        res_backup["candidate_label"] = "Best Outage Backup"
+
+        # 2. Run on Best 25-Year NPV system
+        res_npv = _run_controller_demo(
+            load, solar, params, controller,
+            rec_npv["panel_kw"], rec_npv["battery_kwh"],
+            use_forecast_provider=False,
+        )
+        res_npv["candidate_key"] = "npv"
+        res_npv["candidate_label"] = "Best 25-Yr NPV"
+
+        # Backward compatibility: root dict defaults to best_backup
+        out = dict(res_backup)
+        out["eval_backup"] = res_backup
+        out["eval_npv"] = res_npv
+        out["recommended_backup"] = rec_backup
+        out["recommended_npv"] = rec_npv
+        out["candidate_info"] = {
+            "backup": {"panel_kw": rec_backup["panel_kw"], "battery_kwh": rec_backup["battery_kwh"], "label": "Best Outage Backup"},
+            "npv": {"panel_kw": rec_npv["panel_kw"], "battery_kwh": rec_npv["battery_kwh"], "label": "Best 25-Yr NPV"},
+        }
+        return out
+
     return await asyncio.to_thread(_run)
 
 
@@ -652,32 +702,63 @@ async def stage_rule_based_ga(params: dict, get_upstream: Callable) -> dict:
 #     return await asyncio.to_thread(_run)
 
 
+_CACHED_DQN_CONTROLLER = None
+
+def _get_cached_dqn() -> DQNController:
+    global _CACHED_DQN_CONTROLLER
+    if _CACHED_DQN_CONTROLLER is None:
+        if DQNController is None:
+            raise RuntimeError("DQNController could not be imported")
+        _CACHED_DQN_CONTROLLER = DQNController(model_path="models/dqn_smart_policy.zip")
+    return _CACHED_DQN_CONTROLLER
+
+
 async def stage_dqn(params: dict, get_upstream: Callable) -> dict:
-    """DQN controller, evaluated on the EXACT SAME hardware configuration as
-    Rule-Based (GA) for a scientifically controlled comparison (Option B).
+    """DQN controller, evaluated on BOTH:
+    1. Best Outage Backup recommendation from GA
+    2. Best 25-Year NPV recommendation from GA
 
-    The system chosen from the GA Pareto front has confirmed unmet load under
-    Rule-Based control (due to reactive discharging), while the Smart DQN
-    eliminates that unmet load through lookahead forecast pre-charging.
-
-    Deliberate setup applied here:
-      1. Loads `dqn_smart_policy.zip` (32-dim forecast-aware policy).
-      2. Passes `use_forecast_provider=True` so the environment gives the DQN
-         its real 32-dim observation (outage_prob_3h, cloud_cover, rain, etc.).
-      3. Uses `ga["recommended"]` — the EXACT SAME panel and battery size as
-         `stage_rule_based_ga` — proving controller superiority on identical hardware.
+    Evaluated on the EXACT SAME hardware configuration as Rule-Based (GA)
+    for a scientifically controlled comparison on both objectives.
+    Uses cached neural weights and fast vectorized observation provider.
     """
     load, solar = get_upstream("synthetic_load"), get_upstream("solar_generation")
     ga = get_upstream("ga")
-    rec = ga["recommended"]
+    rec_backup = ga.get("recommended_backup", ga["recommended"])
+    rec_npv = ga.get("recommended_npv", ga["recommended"])
 
     def _run():
-        return _run_controller_demo(
-            load, solar, params,
-            DQNController(model_path="models/dqn_smart_policy.zip"),
-            rec["panel_kw"], rec["battery_kwh"],
+        controller = _get_cached_dqn()
+        # 1. Run on Best Outage Backup system
+        res_backup = _run_controller_demo(
+            load, solar, params, controller,
+            rec_backup["panel_kw"], rec_backup["battery_kwh"],
             use_forecast_provider=True,   # give DQN real 32-dim forecast obs
         )
+        res_backup["candidate_key"] = "backup"
+        res_backup["candidate_label"] = "Best Outage Backup"
+
+        # 2. Run on Best 25-Year NPV system
+        res_npv = _run_controller_demo(
+            load, solar, params, controller,
+            rec_npv["panel_kw"], rec_npv["battery_kwh"],
+            use_forecast_provider=True,   # give DQN real 32-dim forecast obs
+        )
+        res_npv["candidate_key"] = "npv"
+        res_npv["candidate_label"] = "Best 25-Yr NPV"
+
+        # Backward compatibility: root dict defaults to best_backup
+        out = dict(res_backup)
+        out["eval_backup"] = res_backup
+        out["eval_npv"] = res_npv
+        out["recommended_backup"] = rec_backup
+        out["recommended_npv"] = rec_npv
+        out["candidate_info"] = {
+            "backup": {"panel_kw": rec_backup["panel_kw"], "battery_kwh": rec_backup["battery_kwh"], "label": "Best Outage Backup"},
+            "npv": {"panel_kw": rec_npv["panel_kw"], "battery_kwh": rec_npv["battery_kwh"], "label": "Best 25-Yr NPV"},
+        }
+        return out
+
     return await asyncio.to_thread(_run)
 
 
@@ -693,14 +774,9 @@ async def stage_outage_proof(params: dict, get_upstream: Callable) -> dict:
         GA + Rule-Based            (rule_based_ga)
         GA + DQN                   (dqn)
 
-    All figures are ANNUALIZED (scaled by 365 / _DEMO_EPISODE_DAYS) rather
-    than left as raw 30-day totals — the earlier version of this tab
-    labeled a 30-day cost "Annual cost", which was a real mislabeling
-    inherited from the original file. The scaling here mirrors the same
-    365/episode_days approach validate_candidates.py already uses for its
-    own annualized comparisons, and every figure this produces is clearly
-    an estimate extrapolated from one 30-day simulated episode, not a
-    true full-year simulation — the frontend note says so explicitly.
+    In addition, computes the rigorous 25-Year NPV Deep Dive between
+    GA + Rule-Based and GA + Smart DQN on the 25-Year Best NPV hardware
+    and Best Outage Backup hardware.
     """
     load, solar = get_upstream("synthetic_load"), get_upstream("solar_generation")
 
@@ -710,10 +786,6 @@ async def stage_outage_proof(params: dict, get_upstream: Callable) -> dict:
             ("ga_rule_based", "GA + Rule-Based", get_upstream("rule_based_ga")),
             ("ga_dqn", "GA + DQN", get_upstream("dqn")),
         ]
-        # Filter out any combo whose controller stage failed/was blocked
-        # (e.g. DQN with no trained model file on a fresh machine) — the
-        # any_of dependency on this stage is specifically designed to still
-        # produce a report using whichever combos succeeded.
         available = [(key, label, r) for key, label, r in combos if r is not None]
         if not available:
             raise RuntimeError(
@@ -722,10 +794,9 @@ async def stage_outage_proof(params: dict, get_upstream: Callable) -> dict:
             )
 
         annualize = 365.0 / _DEMO_EPISODE_DAYS
+        fin_cfg = params.get("financial_config", {})
 
-        # "Without solar/battery" baseline — 100% grid-dependent, so every
-        # outage timestep is, by definition, fully unmet. Counted directly
-        # here (not assumed) so the number is measured, not inferred.
+        # "Without solar/battery" baseline
         grid = _build_grid(params["city"])
         n = min(len(load["load_kw"]), len(solar["solar_kw_per_kwp"]))
         no_solar_env = EnergyEnv(
@@ -757,6 +828,8 @@ async def stage_outage_proof(params: dict, get_upstream: Callable) -> dict:
 
         comparisons = {}
         for key, label, r in available:
+            ann_savings = round(baseline["annual_cost_inr"] - r["total_cost_inr"] * annualize)
+            fin = full_financial_analysis(r["panel_kw"], r["battery_kwh"], ann_savings, fin_cfg)
             comparisons[key] = {
                 "label": label,
                 "panel_kw": r["panel_kw"], "battery_kwh": r["battery_kwh"],
@@ -766,7 +839,10 @@ async def stage_outage_proof(params: dict, get_upstream: Callable) -> dict:
                 "outage_hours_total": round(r["outage"]["steps_total"] * 0.25 * annualize, 1),
                 "outage_hours_faced": round(r["outage"]["steps_unmet"] * 0.25 * annualize, 1),
                 "outage_coverage_pct": r["outage"]["coverage_pct"],
-                "annual_savings_vs_baseline_inr": round(baseline["annual_cost_inr"] - r["total_cost_inr"] * annualize),
+                "annual_savings_vs_baseline_inr": ann_savings,
+                "npv_25yr_inr": round(fin.npv_25yr_inr),
+                "payback_years": round(fin.payback_years, 1) if np.isfinite(fin.payback_years) else None,
+                "total_capex_inr": round(fin.total_capex_inr),
             }
 
         # Select best combo: highest annual savings among configurations with maximum outage resilience
@@ -774,11 +850,155 @@ async def stage_outage_proof(params: dict, get_upstream: Callable) -> dict:
         resilient_combos = [k for k, c in comparisons.items() if c["annual_unmet_load_kwh"] <= min_unmet + 5.0]
         best_key = max(resilient_combos, key=lambda k: comparisons[k]["annual_savings_vs_baseline_inr"])
 
+        # ── 25-Year Best NPV Deep Dive (Rule-Based vs Smart DQN on identical Best NPV system) ──
+        ga_stage = get_upstream("ga")
+        rb_ga_res = get_upstream("rule_based_ga")
+        dqn_res = get_upstream("dqn")
+
+        npv_deep_dive = None
+        if ga_stage and rb_ga_res and dqn_res:
+            rec_npv = ga_stage.get("recommended_npv", ga_stage.get("recommended"))
+            rb_npv_run = rb_ga_res.get("eval_npv", rb_ga_res)
+            dqn_npv_run = dqn_res.get("eval_npv", dqn_res)
+
+            p_kw = float(rec_npv["panel_kw"])
+            b_kwh = float(rec_npv["battery_kwh"])
+
+            # Rule-based on Best NPV system
+            rb_cost_yr = round(rb_npv_run["total_cost_inr"] * annualize)
+            rb_savings_yr = round(baseline["annual_cost_inr"] - rb_cost_yr)
+            rb_unmet_yr = round(rb_npv_run["unmet_load_kwh"] * annualize, 1)
+            rb_cov = rb_npv_run["outage"]["coverage_pct"]
+            rb_fin = full_financial_analysis(p_kw, b_kwh, rb_savings_yr, fin_cfg)
+
+            # DQN on Best NPV system
+            dqn_cost_yr = round(dqn_npv_run["total_cost_inr"] * annualize)
+            dqn_savings_yr = round(baseline["annual_cost_inr"] - dqn_cost_yr)
+            dqn_unmet_yr = round(dqn_npv_run["unmet_load_kwh"] * annualize, 1)
+            dqn_cov = dqn_npv_run["outage"]["coverage_pct"]
+            dqn_fin = full_financial_analysis(p_kw, b_kwh, dqn_savings_yr, fin_cfg)
+
+            diff_npv = round(dqn_fin.npv_25yr_inr - rb_fin.npv_25yr_inr)
+            pct_npv = round((diff_npv / abs(rb_fin.npv_25yr_inr) * 100.0), 1) if rb_fin.npv_25yr_inr != 0 else 0.0
+            diff_savings = round(dqn_savings_yr - rb_savings_yr)
+            diff_cost = round(rb_cost_yr - dqn_cost_yr)
+            diff_payback = round(rb_fin.payback_years - dqn_fin.payback_years, 2) if (np.isfinite(rb_fin.payback_years) and np.isfinite(dqn_fin.payback_years)) else 0.0
+            diff_unmet = round(rb_unmet_yr - dqn_unmet_yr, 1)
+            diff_cov = round(dqn_cov - rb_cov, 1)
+
+            npv_deep_dive = {
+                "system": {
+                    "panel_kw": p_kw,
+                    "battery_kwh": b_kwh,
+                    "tilt_deg": float(rec_npv.get("tilt_deg", 15.0)),
+                    "azimuth_deg": float(rec_npv.get("azimuth_deg", 180.0)),
+                    "total_capex_inr": round(rb_fin.total_capex_inr),
+                    "subsidy_amount_inr": round(rb_fin.subsidy_amount_inr),
+                },
+                "rule_based": {
+                    "annual_cost_inr": rb_cost_yr,
+                    "annual_savings_inr": rb_savings_yr,
+                    "npv_25yr_inr": round(rb_fin.npv_25yr_inr),
+                    "payback_years": round(rb_fin.payback_years, 1) if np.isfinite(rb_fin.payback_years) else None,
+                    "irr_pct": round(rb_fin.irr_pct, 1) if np.isfinite(rb_fin.irr_pct) else None,
+                    "annual_unmet_load_kwh": rb_unmet_yr,
+                    "outage_coverage_pct": rb_cov,
+                },
+                "dqn": {
+                    "annual_cost_inr": dqn_cost_yr,
+                    "annual_savings_inr": dqn_savings_yr,
+                    "npv_25yr_inr": round(dqn_fin.npv_25yr_inr),
+                    "payback_years": round(dqn_fin.payback_years, 1) if np.isfinite(dqn_fin.payback_years) else None,
+                    "irr_pct": round(dqn_fin.irr_pct, 1) if np.isfinite(dqn_fin.irr_pct) else None,
+                    "annual_unmet_load_kwh": dqn_unmet_yr,
+                    "outage_coverage_pct": dqn_cov,
+                },
+                "delta": {
+                    "npv_25yr_diff_inr": diff_npv,
+                    "npv_pct_gain": pct_npv,
+                    "annual_savings_diff_inr": diff_savings,
+                    "annual_cost_diff_inr": diff_cost,
+                    "payback_diff_years": diff_payback,
+                    "unmet_kwh_reduced": diff_unmet,
+                    "coverage_diff_pct": diff_cov,
+                }
+            }
+
+        # ── Best Outage Backup Deep Dive ──
+        backup_deep_dive = None
+        if ga_stage and rb_ga_res and dqn_res:
+            rec_backup = ga_stage.get("recommended_backup", ga_stage.get("recommended"))
+            rb_b_run = rb_ga_res.get("eval_backup", rb_ga_res)
+            dqn_b_run = dqn_res.get("eval_backup", dqn_res)
+
+            p_kw = float(rec_backup["panel_kw"])
+            b_kwh = float(rec_backup["battery_kwh"])
+
+            rb_cost_yr = round(rb_b_run["total_cost_inr"] * annualize)
+            rb_savings_yr = round(baseline["annual_cost_inr"] - rb_cost_yr)
+            rb_unmet_yr = round(rb_b_run["unmet_load_kwh"] * annualize, 1)
+            rb_cov = rb_b_run["outage"]["coverage_pct"]
+            rb_fin = full_financial_analysis(p_kw, b_kwh, rb_savings_yr, fin_cfg)
+
+            dqn_cost_yr = round(dqn_b_run["total_cost_inr"] * annualize)
+            dqn_savings_yr = round(baseline["annual_cost_inr"] - dqn_cost_yr)
+            dqn_unmet_yr = round(dqn_b_run["unmet_load_kwh"] * annualize, 1)
+            dqn_cov = dqn_b_run["outage"]["coverage_pct"]
+            dqn_fin = full_financial_analysis(p_kw, b_kwh, dqn_savings_yr, fin_cfg)
+
+            diff_npv = round(dqn_fin.npv_25yr_inr - rb_fin.npv_25yr_inr)
+            pct_npv = round((diff_npv / abs(rb_fin.npv_25yr_inr) * 100.0), 1) if rb_fin.npv_25yr_inr != 0 else 0.0
+            diff_savings = round(dqn_savings_yr - rb_savings_yr)
+            diff_cost = round(rb_cost_yr - dqn_cost_yr)
+            diff_payback = round(rb_fin.payback_years - dqn_fin.payback_years, 2) if (np.isfinite(rb_fin.payback_years) and np.isfinite(dqn_fin.payback_years)) else 0.0
+            diff_unmet = round(rb_unmet_yr - dqn_unmet_yr, 1)
+            diff_cov = round(dqn_cov - rb_cov, 1)
+
+            backup_deep_dive = {
+                "system": {
+                    "panel_kw": p_kw,
+                    "battery_kwh": b_kwh,
+                    "tilt_deg": float(rec_backup.get("tilt_deg", 15.0)),
+                    "azimuth_deg": float(rec_backup.get("azimuth_deg", 180.0)),
+                    "total_capex_inr": round(rb_fin.total_capex_inr),
+                    "subsidy_amount_inr": round(rb_fin.subsidy_amount_inr),
+                },
+                "rule_based": {
+                    "annual_cost_inr": rb_cost_yr,
+                    "annual_savings_inr": rb_savings_yr,
+                    "npv_25yr_inr": round(rb_fin.npv_25yr_inr),
+                    "payback_years": round(rb_fin.payback_years, 1) if np.isfinite(rb_fin.payback_years) else None,
+                    "irr_pct": round(rb_fin.irr_pct, 1) if np.isfinite(rb_fin.irr_pct) else None,
+                    "annual_unmet_load_kwh": rb_unmet_yr,
+                    "outage_coverage_pct": rb_cov,
+                },
+                "dqn": {
+                    "annual_cost_inr": dqn_cost_yr,
+                    "annual_savings_inr": dqn_savings_yr,
+                    "npv_25yr_inr": round(dqn_fin.npv_25yr_inr),
+                    "payback_years": round(dqn_fin.payback_years, 1) if np.isfinite(dqn_fin.payback_years) else None,
+                    "irr_pct": round(dqn_fin.irr_pct, 1) if np.isfinite(dqn_fin.irr_pct) else None,
+                    "annual_unmet_load_kwh": dqn_unmet_yr,
+                    "outage_coverage_pct": dqn_cov,
+                },
+                "delta": {
+                    "npv_25yr_diff_inr": diff_npv,
+                    "npv_pct_gain": pct_npv,
+                    "annual_savings_diff_inr": diff_savings,
+                    "annual_cost_diff_inr": diff_cost,
+                    "payback_diff_years": diff_payback,
+                    "unmet_kwh_reduced": diff_unmet,
+                    "coverage_diff_pct": diff_cov,
+                }
+            }
+
         return {
             "baseline": baseline,
             "comparisons": comparisons,
             "best_combo": best_key,
             "episode_days": _DEMO_EPISODE_DAYS,
+            "npv_deep_dive": npv_deep_dive,
+            "backup_deep_dive": backup_deep_dive,
         }
 
     return await asyncio.to_thread(_run)

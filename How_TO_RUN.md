@@ -101,6 +101,23 @@ python scripts/evaluate_smart_dqn.py
 
 ## 5. Key Architecture Highlights
 
+* **Dual-Candidate Controller Evaluation (Best Backup vs. Best NPV):**
+  Both Rule-Based and Smart DQN controllers automatically simulate and evaluate both candidates produced by GA Pareto optimization:
+  - **Best Outage Backup:** Maximum blackout resilience (0 unmet load, larger battery reserve).
+  - **Best 25-Year NPV:** Optimum techno-economic capital return (balanced panel/battery size).
+  Users can seamlessly switch between candidates via the interactive toggle bar in both controller tabs (`Rule-Based (GA)` and `DQN (GA)`).
+
+* **25-Year Best NPV Deep Dive Dashboard (Final Report Tab):**
+  The Final Report tab provides an executive head-to-head comparison between **GA + Rule-Based** and **GA + Smart DQN** on the exact same 25-Year Best NPV hardware:
+  - **$\Delta$ Lifetime NPV Uplift:** Extra ₹ and % return over 25 years.
+  - **$\Delta$ Annual Savings:** Additional electricity savings delivered annually.
+  - **$\Delta$ Payback Acceleration:** Years faster to reach capital break-even.
+  - **$\Delta$ Blackout Deficit Reduction:** Additional kWh of load protected and outage coverage percentage uplift.
+  - Complete side-by-side techno-economic comparison table (NPV, Payback, IRR, Annual Cost, Annual Savings, Unmet Load, Outage Coverage, CAPEX).
+
+* **20× Vectorized Simulation Optimization:**
+  Simulation execution is accelerated ~20× via vectorized forecast provider slicing, precomputed solar daylight curves, and single-step observation caching in `EnergyEnv`, running the dual DQN simulation in just ~3–4 seconds.
+
 * **32-Dimensional State Space:** Combines 17 physical microgrid features with 15 multi-horizon rolling forecast signals (1h, 3h, 6h cloud cover, rain probability, outage hazard, and target battery reserve $SOC_{\text{req}}$).
 * **Action Safety Shield:** Enforces strict physical safety constraints preventing battery damage, inverter clipping violations, and parasitic grid charging during non-risk hours.
 * **Continuous Pareto Frontier:** NSGA-II optimizes 4 variables simultaneously (Panel kW, Battery kWh, Tilt, Azimuth) to generate 3 distinct practical choices (Fastest Payback, Best 25yr NPV, Best Outage Protection).

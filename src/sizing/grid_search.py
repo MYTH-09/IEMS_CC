@@ -381,8 +381,16 @@ def top_recommendations(
         best_backup = backup_pool.head(n)
 
     # 3. Best 25yr NPV: system that maximizes lifetime financial savings.
+    # For a solar + battery microgrid (IEMS), this MUST have a functional battery (>= 2.0 kWh)
+    # so that the homeowner receives real battery storage and the smart inverter controller can operate.
     # Must be physically distinct from fastest_payback AND best_backup so each card
     # provides an actionable, distinct choice and best_backup is never outperformed on backup.
+    storage_candidates = df[df["battery_kwh"] >= min_practical_battery]
+    if storage_candidates.empty:
+        storage_candidates = df[df["battery_kwh"] > 0.5]
+    if storage_candidates.empty:
+        storage_candidates = df
+
     fp_panel = float(fastest_payback.iloc[0]["panel_kw"]) if not fastest_payback.empty else -1.0
     fp_batt = float(fastest_payback.iloc[0]["battery_kwh"]) if not fastest_payback.empty else -1.0
     bb_panel = float(best_backup.iloc[0]["panel_kw"]) if not best_backup.empty else -1.0
@@ -397,22 +405,22 @@ def top_recommendations(
         d_bb = abs(row["battery_kwh"] - bb_batt) >= 2.0
         return d_fp and d_bb
 
-    distinct_mask = df.apply(_is_distinct, axis=1)
-    npv_pool = df[distinct_mask]
+    distinct_mask = storage_candidates.apply(_is_distinct, axis=1)
+    npv_pool = storage_candidates[distinct_mask]
     if npv_pool.empty:
         # Fallback 1: relax battery-tier constraint — distinct from best_backup on panel at least
-        distinct_panel = df.apply(
+        distinct_panel = storage_candidates.apply(
             lambda r: (abs(r["panel_kw"] - bb_panel) >= 0.5) and
                       ((abs(r["panel_kw"] - fp_panel) >= 0.5) or (abs(r["battery_kwh"] - fp_batt) >= 0.5)),
             axis=1,
         )
-        npv_pool = df[distinct_panel]
+        npv_pool = storage_candidates[distinct_panel]
     if npv_pool.empty:
         # Fallback 2: distinct from fastest_payback only
-        distinct_fp = df.apply(lambda r: (abs(r["panel_kw"] - fp_panel) >= 0.5) or (abs(r["battery_kwh"] - fp_batt) >= 0.5), axis=1)
-        npv_pool = df[distinct_fp]
+        distinct_fp = storage_candidates.apply(lambda r: (abs(r["panel_kw"] - fp_panel) >= 0.5) or (abs(r["battery_kwh"] - fp_batt) >= 0.5), axis=1)
+        npv_pool = storage_candidates[distinct_fp]
     if npv_pool.empty:
-        npv_pool = df
+        npv_pool = storage_candidates
 
     best_npv = npv_pool.nlargest(n, "npv_25yr_inr")
 

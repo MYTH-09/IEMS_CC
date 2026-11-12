@@ -15,4 +15,10 @@ venv/
 .venv/
 env/
 **/site-packages/
-**/*.egg-info/
+**/*.egg-info/
+__pycache__/
+*.pyc
+logs/
+models/checkpoints_smart/
+models/archive/
+outputs/dqn_diagnostics/
