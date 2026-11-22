@@ -2410,17 +2410,20 @@
       ${candToggleHtml}
       <p class="section-label">${title} — system: ${cur.panel_kw}kW / ${cur.battery_kwh}kWh, full ${cur.daily_chart.day_labels.length}-day episode</p>
       <div class="stat-grid">
-        <div class="stat-card"><div class="label">Total cost</div><div class="value">₹${cur.total_cost_inr.toLocaleString('en-IN')}</div></div>
+        <div class="stat-card">
+          <div class="label">${cur.total_cost_inr < 0 ? 'Net profit' : 'Total cost'}</div>
+          <div class="value" style="${cur.total_cost_inr < 0 ? 'color:#059669; font-weight:700;' : ''}">${cur.total_cost_inr < 0 ? '+₹' + Math.abs(cur.total_cost_inr).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '₹' + cur.total_cost_inr.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+        </div>
         <div class="stat-card"><div class="label">Grid import</div><div class="value">${cur.grid_import_kwh}<span class="u">kWh</span></div></div>
         <div class="stat-card"><div class="label">Grid export</div><div class="value">${cur.grid_export_kwh}<span class="u">kWh</span></div></div>
         <div class="stat-card"><div class="label">Unmet load</div><div class="value">${cur.unmet_load_kwh}<span class="u">kWh</span></div></div>
         <div class="stat-card"><div class="label">Outage coverage</div><div class="value">${o.coverage_pct}<span class="u">%</span></div></div>
       </div>
-      <p class="chart-sublabel" style="margin-top:18px">Cost breakdown (sums to total cost)</p>
+      <p class="chart-sublabel" style="margin-top:18px">Cost breakdown (sums to ${cur.total_cost_inr < 0 ? 'net profit' : 'total cost'})</p>
       <div class="mini-stat-row">
-        <div class="mini-stat"><div class="l">Grid import cost</div><div class="v">₹${b.import_cost_inr.toLocaleString('en-IN')}</div></div>
-        <div class="mini-stat"><div class="l">Export credit</div><div class="v">−₹${b.export_credit_inr.toLocaleString('en-IN')}</div></div>
-        <div class="mini-stat"><div class="l">Unmet-load penalty</div><div class="v">₹${b.unmet_penalty_inr.toLocaleString('en-IN')}</div></div>
+        <div class="mini-stat"><div class="l">Grid import cost</div><div class="v">₹${b.import_cost_inr.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div></div>
+        <div class="mini-stat"><div class="l">Export credit</div><div class="v" style="color:#059669; font-weight:700;">+₹${Math.abs(b.export_credit_inr).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div></div>
+        <div class="mini-stat"><div class="l">Unmet-load penalty</div><div class="v">₹${b.unmet_penalty_inr.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div></div>
         <div class="mini-stat"><div class="l">Outage steps (15min)</div><div class="v">${o.steps_unmet} unmet / ${o.steps_total} total</div></div>
       </div>
 
