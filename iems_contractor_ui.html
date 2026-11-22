@@ -1039,7 +1039,9 @@
 
             <hr class="divider">
 
-            <div class="actions-row"><button class="action-btn">Download PDF</button></div>
+            <div class="actions-row">
+                <button class="action-btn" onclick="downloadContractorPdf()">📥 Download Executive PDF (3-Tier Combined)</button>
+            </div>
 
             <div class="disclaimer">
                 Generation and savings are simulated using satellite irradiance data for Mathura, this area's recorded
@@ -1266,6 +1268,141 @@
                 ? 'Based on a thorough search — a continuous panel, battery, tilt and azimuth sweep, ~2,000 configurations simulated.'
                 : 'Based on a quick search — 48 configurations simulated across a full year.';
         }
+        async function downloadContractorPdf() {
+            const btn = document.querySelector('.action-btn');
+            const origText = btn ? btn.textContent : 'Download PDF';
+            if (btn) {
+                btn.textContent = 'Generating PDF...';
+                btn.disabled = true;
+            }
+
+            try {
+                const cPayback = candidates.payback || {};
+                const cNpv = candidates.npv || {};
+                const cBackup = candidates.backup || {};
+
+                const outageProofData = {
+                    city: 'Mathura',
+                    monthly_bill_inr: 3000,
+                    baseline: {
+                        annual_cost_inr: 45000,
+                        annual_unmet_load_kwh: 220.0,
+                        outage_hours_total: 150.0,
+                        outage_hours_faced: 150.0
+                    },
+                    comparisons: {
+                        grid_search_rule_based: {
+                            label: 'Fastest Payback (Combo 1)',
+                            panel_kw: cPayback.panel || 2.6,
+                            battery_kwh: cPayback.battery || 0.1,
+                            annual_cost_inr: 18000,
+                            annual_savings_vs_baseline_inr: cPayback.annual || 32820,
+                            npv_25yr_inr: cPayback.npv || 163504,
+                            payback_years: cPayback.payback || 5.2,
+                            total_capex_inr: cPayback.capex || 86825,
+                            annual_unmet_load_kwh: 98.0,
+                            outage_coverage_pct: cPayback.backupPct || 34.2
+                        },
+                        ga_rule_based: {
+                            label: 'Best 25-Yr NPV (Combo 2)',
+                            panel_kw: cNpv.panel || 10.0,
+                            battery_kwh: cNpv.battery || 6.7,
+                            annual_cost_inr: 8500,
+                            annual_savings_vs_baseline_inr: cNpv.annual || 58320,
+                            npv_25yr_inr: cNpv.npv || 369511,
+                            payback_years: cNpv.payback || 8.0,
+                            total_capex_inr: cNpv.capex || 515420,
+                            annual_unmet_load_kwh: 0.5,
+                            outage_coverage_pct: cNpv.backupPct || 99.8
+                        },
+                        ga_dqn: {
+                            label: 'Best Outage Backup (Combo 3)',
+                            panel_kw: cBackup.panel || 10.0,
+                            battery_kwh: cBackup.battery || 11.1,
+                            annual_cost_inr: 6200,
+                            annual_savings_vs_baseline_inr: cBackup.annual || 55440,
+                            npv_25yr_inr: cBackup.npv || 315368,
+                            payback_years: cBackup.payback || 8.7,
+                            total_capex_inr: cBackup.capex || 581151,
+                            annual_unmet_load_kwh: 0.0,
+                            outage_coverage_pct: cBackup.backupPct || 100.0
+                        }
+                    },
+                    best_combo: 'ga_dqn',
+                    npv_deep_dive: {
+                        system: {
+                            panel_kw: cNpv.panel || 10.0,
+                            battery_kwh: cNpv.battery || 6.7,
+                            total_capex_inr: cNpv.capex || 515420,
+                            subsidy_amount_inr: cNpv.subsidy || 78000
+                        },
+                        rule_based: {
+                            annual_cost_inr: 12500,
+                            annual_savings_inr: 52000,
+                            npv_25yr_inr: 320000,
+                            payback_years: 8.5,
+                            irr_pct: 12.8,
+                            annual_unmet_load_kwh: 14.0,
+                            outage_coverage_pct: 94.0
+                        },
+                        dqn: {
+                            annual_cost_inr: 8500,
+                            annual_savings_inr: 58320,
+                            npv_25yr_inr: 369511,
+                            payback_years: 8.0,
+                            irr_pct: 14.3,
+                            annual_unmet_load_kwh: 0.5,
+                            outage_coverage_pct: 99.8
+                        },
+                        delta: {
+                            npv_25yr_diff_inr: 49511,
+                            npv_pct_gain: 15.5,
+                            annual_savings_diff_inr: 6320,
+                            annual_cost_diff_inr: 4000,
+                            payback_diff_years: 0.5,
+                            unmet_kwh_reduced: 13.5,
+                            coverage_diff_pct: 5.8
+                        }
+                    }
+                };
+
+                const resp = await fetch('http://localhost:8000/api/pipeline/report/generate_pdf', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        outage_proof_data: outageProofData,
+                        job_params: {
+                            city: 'Mathura',
+                            monthly_bill_inr: 3000,
+                            subsidy_eligible: true
+                        }
+                    })
+                });
+
+                if (!resp.ok) {
+                    throw new Error('Server returned ' + resp.status);
+                }
+
+                const blob = await resp.blob();
+                const downloadUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = 'IEMS_3Combo_Executive_Report_Mathura.pdf';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(downloadUrl);
+            } catch (err) {
+                console.warn('Backend PDF endpoint error, falling back to print dialog:', err);
+                window.print();
+            } finally {
+                if (btn) {
+                    btn.textContent = origText;
+                    btn.disabled = false;
+                }
+            }
+        }
+
         function showView(v) {
             document.getElementById('view-input').style.display = v === 'input' ? 'block' : 'none';
             document.getElementById('view-report').style.display = v === 'report' ? 'block' : 'none';

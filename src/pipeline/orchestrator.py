@@ -181,6 +181,14 @@ def get_stage_result(job_id: str, stage_name: str) -> Optional[dict]:
     return job["stages"][stage_name]["result"]
 
 
+def get_job_params(job_id: str) -> Optional[dict]:
+    """Returns the input parameter dictionary associated with this job_id."""
+    job = _JOBS.get(job_id)
+    if job is None:
+        return None
+    return job.get("params", {})
+
+
 async def run_pipeline_job(job_id: str, stage_functions: dict[str, Callable], poll_interval_sec: float = 0.5) -> None:
     """
     The background orchestrator loop. Launches each stage as soon as all

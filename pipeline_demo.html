@@ -4,6 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>IEMS — Pipeline Demo</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -531,8 +534,9 @@
 
         .rec-card .rc-system {
             font-family: 'IBM Plex Mono', monospace;
-            font-size: 14.5px;
-            font-weight: 600;
+            font-size: 15.5px !important;
+            font-weight: 800 !important;
+            color: #DC2626 !important;
             margin-bottom: 10px;
         }
 
@@ -661,7 +665,7 @@
             background: var(--teal-deep);
             color: white;
             border-color: var(--teal-deep);
-            box-shadow: 0 2px 6px rgba(27,68,72,0.2);
+            box-shadow: 0 2px 6px rgba(27, 68, 72, 0.2);
         }
 
         /* ---- Polished Executive Head-to-Head Deep Dive Dashboard ---- */
@@ -671,7 +675,7 @@
             border-radius: 14px;
             padding: 24px 28px;
             margin-bottom: 28px;
-            box-shadow: 0 10px 30px -5px rgba(27,68,72,0.08), 0 0 0 1px rgba(27,68,72,0.05);
+            box-shadow: 0 10px 30px -5px rgba(27, 68, 72, 0.08), 0 0 0 1px rgba(27, 68, 72, 0.05);
         }
 
         .deep-dive-header {
@@ -726,13 +730,13 @@
 
         .dd-toggle-btn:hover {
             color: var(--teal-deep);
-            background: rgba(255,255,255,0.6);
+            background: rgba(255, 255, 255, 0.6);
         }
 
         .dd-toggle-btn.active {
             background: var(--teal-deep);
             color: #FFFFFF;
-            box-shadow: 0 2px 8px rgba(27,68,72,0.25);
+            box-shadow: 0 2px 8px rgba(27, 68, 72, 0.25);
         }
 
         .dd-badge {
@@ -767,7 +771,7 @@
 
         .kpi-delta-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
         }
 
         .kpi-delta-card.emerald-border {
@@ -905,6 +909,302 @@
             line-height: 1;
             margin-top: 2px;
         }
+
+        /* ---- Enhanced Final Report & PDF Download UI ---- */
+        .report-action-header {
+            background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            flex-wrap: wrap;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .rah-info {
+            flex: 1;
+            min-width: 280px;
+        }
+
+        .rah-badge {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #38BDF8;
+            background: rgba(56, 189, 248, 0.12);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            padding: 3px 9px;
+            border-radius: 20px;
+            margin-bottom: 6px;
+        }
+
+        .rah-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: #F8FAFC;
+            letter-spacing: -0.01em;
+            margin-bottom: 4px;
+        }
+
+        .rah-sub {
+            font-size: 12.5px;
+            color: #94A3B8;
+            line-height: 1.5;
+        }
+
+        .rah-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .pdf-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 11px 20px;
+            border-radius: 8px;
+            font-size: 13.5px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            border: none;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .pdf-btn.primary {
+            background: linear-gradient(135deg, #0D9488 0%, #0F766E 100%);
+            color: #FFFFFF;
+            box-shadow: 0 2px 10px rgba(13, 148, 136, 0.35);
+        }
+
+        .pdf-btn.primary:hover {
+            background: linear-gradient(135deg, #14B8A6 0%, #0D9488 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(13, 148, 136, 0.45);
+        }
+
+        .pdf-btn.primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .pdf-btn.secondary {
+            background: rgba(255, 255, 255, 0.08);
+            color: #E2E8F0;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .pdf-btn.secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: #FFFFFF;
+        }
+
+        /* 3-Tier Combination Cards Grid */
+        .tier-cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin-top: 14px;
+            margin-bottom: 24px;
+        }
+
+        .tier-card {
+            border: 1.5px solid #E2E8F0;
+            border-radius: 12px;
+            padding: 18px 20px;
+            background: #FFFFFF;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .tier-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+        }
+
+        .tier-card.winner {
+            border-color: #0F766E;
+            background: linear-gradient(180deg, #F0FDF4 0%, #FFFFFF 100%);
+            box-shadow: 0 4px 18px rgba(15, 118, 110, 0.12);
+        }
+
+        .tier-card-header {
+            margin-bottom: 12px;
+        }
+
+        .tier-tag {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            padding: 3px 8px;
+            border-radius: 6px;
+            display: inline-block;
+            margin-bottom: 6px;
+        }
+
+        .tier-tag.t1 {
+            background: #F1F5F9;
+            color: #475569;
+            border: 1px solid #CBD5E1;
+        }
+
+        .tier-tag.t2 {
+            background: #E0F2FE;
+            color: #0369A1;
+            border: 1px solid #BAE6FD;
+        }
+
+        .tier-tag.t3 {
+            background: #DCFCE7;
+            color: #15803D;
+            border: 1px solid #86EFAC;
+            font-weight: 800;
+        }
+
+        .tier-name {
+            font-size: 15px;
+            font-weight: 700;
+            color: #0F172A;
+            line-height: 1.3;
+        }
+
+        .tier-desc {
+            font-size: 11.5px;
+            color: #64748B;
+            margin-top: 2px;
+        }
+
+        .tier-hardware {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #0F766E;
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin: 10px 0 14px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .tier-kpi-rows {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border-top: 1px solid #F1F5F9;
+            padding-top: 10px;
+        }
+
+        .tier-kpi-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+        }
+
+        .tier-kpi-row .l {
+            color: #64748B;
+        }
+
+        .tier-kpi-row .v {
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 600;
+            color: #1E293B;
+        }
+
+        .tier-kpi-row .v.green {
+            color: #0F766E;
+            font-weight: 700;
+        }
+
+        .tier-badge-winner {
+            position: absolute;
+            top: -10px;
+            right: 14px;
+            background: #0F766E;
+            color: #FFFFFF;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 9px;
+            border-radius: 12px;
+            letter-spacing: 0.04em;
+            box-shadow: 0 2px 6px rgba(15, 118, 110, 0.4);
+        }
+
+        /* High-Contrast Radar Recommendation Cards */
+        .radar-summary-card {
+            background: #FFFFFF !important;
+            border: 1.5px solid #CBD5E1 !important;
+            border-radius: 10px !important;
+            padding: 12px 16px !important;
+            min-width: 140px !important;
+            flex: 1 !important;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06) !important;
+        }
+
+        .radar-summary-card.c-sweet {
+            border-top: 4px solid #D97706 !important;
+        }
+
+        .radar-summary-card.c-fast {
+            border-top: 4px solid #0D9488 !important;
+        }
+
+        .radar-summary-card.c-low {
+            border-top: 4px solid #0284C7 !important;
+        }
+
+        .radar-summary-card .rsc-badge {
+            font-size: 10px !important;
+            font-weight: 800 !important;
+            letter-spacing: 0.08em !important;
+            text-transform: uppercase !important;
+            margin-bottom: 4px !important;
+        }
+
+        .radar-summary-card.c-sweet .rsc-badge {
+            color: #B45309 !important;
+        }
+
+        .radar-summary-card.c-fast .rsc-badge {
+            color: #0F766E !important;
+        }
+
+        .radar-summary-card.c-low .rsc-badge {
+            color: #0369A1 !important;
+        }
+
+        .radar-summary-card .rsc-capacity {
+            font-size: 16px !important;
+            font-weight: 900 !important;
+            color: #DC2626 !important;
+            /* High visibility bold red to prevent color merging with card background */
+            font-family: 'IBM Plex Mono', monospace !important;
+            margin: 4px 0 !important;
+        }
+
+        .radar-summary-card .rsc-desc {
+            font-size: 11px !important;
+            font-weight: 600 !important;
+            color: #475569 !important;
+        }
     </style>
 </head>
 
@@ -912,9 +1212,11 @@
 
     <div class="shell">
         <div class="brand-row">
-            <div class="brand-mark"></div>
-            <div class="brand-name">IEMS</div>
-            <div class="brand-tag">Pipeline walkthrough</div>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div class="brand-mark"></div>
+                <div class="brand-name">IEMS</div>
+                <div class="brand-tag">Pipeline walkthrough</div>
+            </div>
         </div>
         <h1 class="h1">Every stage, end to end</h1>
         <p class="lede">Submit one household, watch all nine stages of the real pipeline run — data generation, physics
@@ -1019,7 +1321,7 @@
             // backend stages are commented out too (see stage_functions.py), not
             // just hidden here.
             { key: "dqn", label: "DQN (GA)" },
-            { key: "outage_proof", label: "Final Report" },
+            { key: "outage_proof", label: "Final Report (PDF) 📥" },
         ];
 
         let currentJobId = null;
@@ -1114,6 +1416,11 @@
                 clearInterval(pollTimer);
                 document.getElementById("run-btn").disabled = false;
                 document.getElementById("run-btn").textContent = "Run full pipeline →";
+                if (stageStatus["outage_proof"] === "done" && currentTab !== "outage_proof") {
+                    currentTab = "outage_proof";
+                    renderTabStrip();
+                    renderActiveTab();
+                }
             }
         }
 
@@ -1122,6 +1429,31 @@
             const status = stageStatus[currentTab] || "pending";
 
             if (status === "pending") {
+                if (currentTab === "outage_proof") {
+                    el.innerHTML = `
+      <div class="panel">
+        <div class="report-action-header">
+          <div class="rah-info">
+            <div class="rah-badge">📑 OFFICIAL AUDIT REPORT • 3-TIER COMPARISON</div>
+            <div class="rah-title">Download 3-Combination Executive Audit Report (PDF)</div>
+            <div class="rah-sub">
+              Compiles a complete publication-quality PDF comparing <b>Grid Search + Rule-Based</b> vs. <b>NSGA-II + Rule-Based</b> vs. <b>NSGA-II + Smart DQN 🏆</b> with PM Surya Ghar subsidy deductions, 25-year NPV, and outage protection metrics.
+            </div>
+          </div>
+          <div class="rah-actions">
+            <button class="pdf-btn primary" id="btn-download-pdf-top" onclick="downloadCombinedPdf()">
+              <span class="icon">📥</span> Download Executive PDF
+            </button>
+          </div>
+        </div>
+        <div class="state-msg" style="margin-top:24px;">
+          ⏳ <b>Simulation not run yet.</b><br/>
+          Click the dark navy <b>"Run full pipeline →"</b> button at the top right to simulate your household.<br/>
+          Once the simulation stages finish, your customized audit dossier will be ready to download here.
+        </div>
+      </div>`;
+                    return;
+                }
                 el.innerHTML = `<div class="panel"><div class="state-msg">Waiting to start — click "Run full pipeline" above.</div></div>`;
                 return;
             }
@@ -1154,7 +1486,21 @@
         }
         function fmtInr(n) {
             if (n === null || n === undefined) return "—";
-            return "₹" + Number(n).toLocaleString('en-IN');
+            const num = Number(n);
+            if (isNaN(num)) return "—";
+            if (num < 0) {
+                return "+₹" + Math.abs(Math.round(num)).toLocaleString('en-IN') + " (Net Income)";
+            }
+            return "₹" + Math.round(num).toLocaleString('en-IN');
+        }
+        function fmtInrClean(n) {
+            if (n === null || n === undefined) return "—";
+            const num = Number(n);
+            if (isNaN(num)) return "—";
+            if (num < 0) {
+                return "+₹" + Math.abs(Math.round(num)).toLocaleString('en-IN');
+            }
+            return "₹" + Math.round(num).toLocaleString('en-IN');
         }
         function fmtYears(n) {
             if (n === null || n === undefined) return "never";
@@ -1191,7 +1537,7 @@
             return `
       <div class="rec-card"${isSizedCard ? ' style="border-color:var(--teal);box-shadow:0 0 0 1px var(--teal)"' : ''}>
         <div class="rc-title">${title}</div>
-        <div class="rc-system">${c.panel_kw}kW / ${c.battery_kwh}kWh</div>
+        <div class="rc-system" style="color: #DC2626 !important; font-weight: 800 !important; font-size: 16px !important; font-family: 'IBM Plex Mono', monospace !important;">${c.panel_kw}kW / ${c.battery_kwh}kWh</div>
         ${rows}
         ${isSizedCard ? '<div class="rc-row" style="border-top:1px solid var(--teal);color:var(--teal-deep);font-weight:600;justify-content:flex-start;gap:6px">→ this system is what the controller tabs below simulate</div>' : ''}
       </div>`;
@@ -1379,10 +1725,11 @@
 
                 // Render legend
                 const legendEl = document.getElementById("grid_search-radar-legend");
+                legendEl.innerHTML = "";
                 radarConfigs.forEach((cfg, idx) => {
                     const title = radarTitles[idx] || cfg.label;
-                    legendEl.innerHTML += `<span style="display:flex;align-items:center;gap:4px">
-                        <span style="width:14px;height:3px;background:${radarColors[idx]};border-radius:2px;display:inline-block"></span>
+                    legendEl.innerHTML += `<span style="display:flex;align-items:center;gap:6px;font-weight:700;color:#0F172A">
+                        <span style="width:14px;height:4px;background:${radarColors[idx]};border-radius:2px;display:inline-block"></span>
                         ${title} (${cfg.label})</span>`;
                 });
 
@@ -1407,35 +1754,35 @@
                             r: {
                                 min: 0, max: 100,
                                 ticks: { display: false, stepSize: 25 },
-                                grid: { color: "rgba(255,255,255,0.1)" },
-                                angleLines: { color: "rgba(255,255,255,0.15)" },
-                                pointLabels: { font: { size: 11, family: "Inter, sans-serif" }, color: "#c8d8e0" }
+                                grid: { color: "#CBD5E1" },
+                                angleLines: { color: "#94A3B8" },
+                                pointLabels: { font: { size: 11, family: "Space Grotesk, Inter, sans-serif", weight: "700" }, color: "#0F172A" }
                             }
                         }
                     }
                 });
 
-                // Radar summary cards
+                // Radar summary cards - High Contrast Inline Styling
                 const cardsEl = document.getElementById("grid_search-radar-cards");
+                cardsEl.innerHTML = "";
                 const cardDefs = [
-                    { title: "SWEET SPOT", cfg: radarConfigs[0], suffix: "Highest Profit" },
-                    { title: "FAST PAYBACK", cfg: radarConfigs[1], suffix: `${radarConfigs[1] ? radarConfigs[1].payback.toFixed(1) : "-"} Yrs` },
-                    { title: "LOW COST", cfg: radarConfigs[2], suffix: "Low Entry CAPEX" },
+                    { title: "SWEET SPOT", accent: "#D97706", badgeColor: "#B45309", cfg: radarConfigs[0], suffix: "Highest Profit" },
+                    { title: "FAST PAYBACK", accent: "#0D9488", badgeColor: "#0F766E", cfg: radarConfigs[1], suffix: `${radarConfigs[1] ? radarConfigs[1].payback.toFixed(1) : "-"} Yrs` },
+                    { title: "LOW COST", accent: "#0284C7", badgeColor: "#0369A1", cfg: radarConfigs[2], suffix: "Low Entry CAPEX" },
                 ];
                 cardDefs.forEach((def, idx) => {
                     if (!def.cfg) return;
-                    cardsEl.innerHTML += `<div style="background:${radarColors[idx]}22;border:1px solid ${radarColors[idx]}55;
-                        border-radius:8px;padding:10px 14px;min-width:120px;flex:1">
-                        <div style="font-size:9px;font-weight:700;letter-spacing:1px;color:${radarColors[idx]};text-transform:uppercase">${def.title}</div>
-                        <div style="font-size:14px;font-weight:700;margin:4px 0 2px;color:#e0f0f4">${def.cfg.label}</div>
-                        <div style="font-size:10px;color:#8aacb8">${def.suffix}</div>
+                    cardsEl.innerHTML += `<div style="background:#FFFFFF !important; border:1.5px solid #CBD5E1 !important; border-top:4px solid ${def.accent} !important; border-radius:10px !important; padding:12px 16px !important; min-width:140px !important; flex:1 !important; box-shadow:0 2px 8px rgba(15,23,42,0.06) !important;">
+                        <div style="font-size:10.5px !important; font-weight:800 !important; letter-spacing:0.08em !important; text-transform:uppercase !important; color:${def.badgeColor} !important; margin-bottom:4px !important;">${def.title}</div>
+                        <div class="rsc-capacity" style="font-size:17px !important; font-weight:900 !important; color:#DC2626 !important; font-family:'IBM Plex Mono', monospace !important; margin:4px 0 !important; line-height:1.2 !important;">${def.cfg.label}</div>
+                        <div style="font-size:11.5px !important; font-weight:600 !important; color:#475569 !important;">${def.suffix}</div>
                     </div>`;
                 });
 
                 // ── Payback Matrix ───────────────────────────────────────────────
                 const matrixEl = document.getElementById("grid_search-payback-matrix");
-                const uniquePanels = [...new Set(d.chart.panel_kw)].sort((a,b) => a-b);
-                const uniqueBats = [...new Set(d.chart.battery_kwh)].sort((a,b) => a-b);
+                const uniquePanels = [...new Set(d.chart.panel_kw)].sort((a, b) => a - b);
+                const uniqueBats = [...new Set(d.chart.battery_kwh)].sort((a, b) => a - b);
                 const paybackMap = {};
                 d.chart.panel_kw.forEach((p, i) => {
                     const key = `${p}_${d.chart.battery_kwh[i]}`;
@@ -1448,13 +1795,13 @@
                     return "#2e2e42";
                 }
                 let tableHtml = `<table style="border-collapse:separate;border-spacing:4px;font-size:12px;min-width:360px">`;
-                tableHtml += `<thead><tr><th style="background:#1a2035;color:#8aacb8;padding:8px 12px;border-radius:6px;text-align:left">Panel \ Bat</th>`;
+                tableHtml += `<thead><tr><th style="background:#0F172A;color:#FFFFFF;padding:8px 12px;border-radius:6px;text-align:left;font-weight:700">Panel / Battery</th>`;
                 uniqueBats.forEach(b => {
-                    tableHtml += `<th style="background:#1a2035;color:#8aacb8;padding:8px 14px;border-radius:6px;text-align:center">${b} kWh</th>`;
+                    tableHtml += `<th style="background:#0F172A;color:#FFFFFF;padding:8px 14px;border-radius:6px;text-align:center;font-weight:700">${b} kWh</th>`;
                 });
                 tableHtml += `</tr></thead><tbody>`;
                 uniquePanels.forEach(p => {
-                    tableHtml += `<tr><td style="background:#1a2035;color:#8aacb8;padding:8px 12px;border-radius:6px;font-weight:600">${p} kW</td>`;
+                    tableHtml += `<tr><td style="background:#0F172A;color:#FFFFFF;padding:8px 12px;border-radius:6px;font-weight:700">${p} kW</td>`;
                     uniqueBats.forEach(b => {
                         const yrs = paybackMap[`${p}_${b}`];
                         const bg = pbColor(yrs);
@@ -1511,7 +1858,7 @@
                 // ── Radar chart helpers ──────────────────────────────────────────
                 // Pick 3 representative Pareto configs: best NPV, fastest payback, lowest CAPEX
                 const gaAllConfigs = d.chart.npv.map((npv, i) => ({
-                    label: `${d.chart_orientation ? Math.round(d.chart.capex ? d.chart.capex[i]/1000 : 0) : 0}k CAPEX`,
+                    label: `${d.chart_orientation ? Math.round(d.chart.capex ? d.chart.capex[i] / 1000 : 0) : 0}k CAPEX`,
                     npv,
                     payback: d.table_top10 && d.table_top10[0] ? null : null, // fallback
                     capex: d.chart.capex ? d.chart.capex[i] : null,
@@ -1534,9 +1881,9 @@
                 const gaCapexMin = Math.min(...gaCapexVals), gaCapexMax = Math.max(...gaCapexVals);
 
                 function gaRadarData(c) {
-                    const npvR = gaNpvMax > gaNpvMin ? ((c.npv_25yr_inr - gaNpvMin)/(gaNpvMax - gaNpvMin))*80+20 : 70;
-                    const pbR = gaPbMax > gaPbMin && c.payback_years !== null ? ((gaPbMax - c.payback_years)/(gaPbMax - gaPbMin))*80+20 : 70;
-                    const capexR = gaCapexMax > gaCapexMin ? ((gaCapexMax - c.total_capex_inr)/(gaCapexMax - gaCapexMin))*70+20 : 50;
+                    const npvR = gaNpvMax > gaNpvMin ? ((c.npv_25yr_inr - gaNpvMin) / (gaNpvMax - gaNpvMin)) * 80 + 20 : 70;
+                    const pbR = gaPbMax > gaPbMin && c.payback_years !== null ? ((gaPbMax - c.payback_years) / (gaPbMax - gaPbMin)) * 80 + 20 : 70;
+                    const capexR = gaCapexMax > gaCapexMin ? ((gaCapexMax - c.total_capex_inr) / (gaCapexMax - gaCapexMin)) * 70 + 20 : 50;
                     const irrR = c.irr_pct !== undefined ? Math.min(95, c.irr_pct * 5 + 20) : npvR * 0.9;
                     return [npvR, pbR, capexR, 60 + (npvR * 0.2), irrR];
                 }
@@ -1545,10 +1892,11 @@
                 const gaRadarTitles = ["Sweet Spot", "Fast Payback", "Low Cost"];
 
                 const gaLegendEl = document.getElementById("ga-radar-legend");
+                gaLegendEl.innerHTML = "";
                 gaRepConfigs.forEach((cfg, idx) => {
                     const lbl = `${cfg.panel_kw}kW + ${cfg.battery_kwh}kWh`;
-                    gaLegendEl.innerHTML += `<span style="display:flex;align-items:center;gap:4px">
-                        <span style="width:14px;height:3px;background:${gaRadarColors[idx]};border-radius:2px;display:inline-block"></span>
+                    gaLegendEl.innerHTML += `<span style="display:flex;align-items:center;gap:6px;font-weight:700;color:#0F172A">
+                        <span style="width:14px;height:4px;background:${gaRadarColors[idx]};border-radius:2px;display:inline-block"></span>
                         ${gaRadarTitles[idx]} (${lbl})</span>`;
                 });
 
@@ -1573,34 +1921,40 @@
                             r: {
                                 min: 0, max: 100,
                                 ticks: { display: false, stepSize: 25 },
-                                grid: { color: "rgba(255,255,255,0.1)" },
-                                angleLines: { color: "rgba(255,255,255,0.15)" },
-                                pointLabels: { font: { size: 11, family: "Inter, sans-serif" }, color: "#c8d8e0" }
+                                grid: { color: "#CBD5E1" },
+                                angleLines: { color: "#94A3B8" },
+                                pointLabels: { font: { size: 11, family: "Space Grotesk, Inter, sans-serif", weight: "700" }, color: "#0F172A" }
                             }
                         }
                     }
                 });
 
-                // Radar summary cards
+                // Radar summary cards - High Contrast Inline Styling
                 const gaCardsEl = document.getElementById("ga-radar-cards");
+                gaCardsEl.innerHTML = "";
+                const gaCardDefs = [
+                    { title: gaRadarTitles[0] || "SWEET SPOT", accent: "#D97706", badgeColor: "#B45309" },
+                    { title: gaRadarTitles[1] || "FAST PAYBACK", accent: "#0D9488", badgeColor: "#0F766E" },
+                    { title: gaRadarTitles[2] || "LOW COST", accent: "#0284C7", badgeColor: "#0369A1" },
+                ];
                 gaRepConfigs.forEach((cfg, idx) => {
                     const lbl = `${cfg.panel_kw}kW + ${cfg.battery_kwh}kWh`;
                     const subtitle = idx === 1 ? `${cfg.payback_years !== null ? cfg.payback_years.toFixed(1) : "-"} Yrs` :
-                                     idx === 2 ? `${fmtInr(cfg.total_capex_inr)} Entry CAPEX` :
-                                     `Highest Profit (${fmtInr(cfg.npv_25yr_inr)})`;
-                    gaCardsEl.innerHTML += `<div style="background:${gaRadarColors[idx]}22;border:1px solid ${gaRadarColors[idx]}55;
-                        border-radius:8px;padding:10px 14px;min-width:120px;flex:1">
-                        <div style="font-size:9px;font-weight:700;letter-spacing:1px;color:${gaRadarColors[idx]};text-transform:uppercase">${gaRadarTitles[idx]}</div>
-                        <div style="font-size:14px;font-weight:700;margin:4px 0 2px;color:#e0f0f4">${lbl}</div>
-                        <div style="font-size:10px;color:#8aacb8">${subtitle}</div>
+                        idx === 2 ? `${fmtInr(cfg.total_capex_inr)} Entry CAPEX` :
+                            `Highest Profit (${fmtInr(cfg.npv_25yr_inr)})`;
+                    const def = gaCardDefs[idx] || { title: "CONFIG", accent: "#64748B", badgeColor: "#475569" };
+                    gaCardsEl.innerHTML += `<div style="background:#FFFFFF !important; border:1.5px solid #CBD5E1 !important; border-top:4px solid ${def.accent} !important; border-radius:10px !important; padding:12px 16px !important; min-width:140px !important; flex:1 !important; box-shadow:0 2px 8px rgba(15,23,42,0.06) !important;">
+                        <div style="font-size:10.5px !important; font-weight:800 !important; letter-spacing:0.08em !important; text-transform:uppercase !important; color:${def.badgeColor} !important; margin-bottom:4px !important;">${def.title}</div>
+                        <div class="rsc-capacity" style="font-size:17px !important; font-weight:900 !important; color:#DC2626 !important; font-family:'IBM Plex Mono', monospace !important; margin:4px 0 !important; line-height:1.2 !important;">${lbl}</div>
+                        <div style="font-size:11.5px !important; font-weight:600 !important; color:#475569 !important;">${subtitle}</div>
                     </div>`;
                 });
 
                 // ── Payback Matrix ───────────────────────────────────────────────
                 // GA produces continuous values — build matrix from table_top10
                 const gaMatrixEl = document.getElementById("ga-payback-matrix");
-                const gaUniqPanels = [...new Set(gaTop.map(c => c.panel_kw))].sort((a,b) => a-b);
-                const gaUniqBats  = [...new Set(gaTop.map(c => c.battery_kwh))].sort((a,b) => a-b);
+                const gaUniqPanels = [...new Set(gaTop.map(c => c.panel_kw))].sort((a, b) => a - b);
+                const gaUniqBats = [...new Set(gaTop.map(c => c.battery_kwh))].sort((a, b) => a - b);
                 const gaPaybackMap = {};
                 gaTop.forEach(c => { gaPaybackMap[`${c.panel_kw}_${c.battery_kwh}`] = c.payback_years; });
                 function gaPbColor(yrs) {
@@ -1612,11 +1966,11 @@
                 let gaTableHtml = `<table style="border-collapse:separate;border-spacing:4px;font-size:12px;min-width:360px">`;
                 gaTableHtml += `<thead><tr><th style="background:#1a2035;color:#8aacb8;padding:8px 12px;border-radius:6px;text-align:left">Panel \ Bat</th>`;
                 gaUniqBats.forEach(b => {
-                    gaTableHtml += `<th style="background:#1a2035;color:#8aacb8;padding:8px 14px;border-radius:6px;text-align:center">${b} kWh</th>`;
+                    gaTableHtml += `<th style="background:#0F172A;color:#FFFFFF;padding:8px 14px;border-radius:6px;text-align:center;font-weight:700">${b} kWh</th>`;
                 });
                 gaTableHtml += `</tr></thead><tbody>`;
                 gaUniqPanels.forEach(p => {
-                    gaTableHtml += `<tr><td style="background:#1a2035;color:#8aacb8;padding:8px 12px;border-radius:6px;font-weight:600">${p} kW</td>`;
+                    gaTableHtml += `<tr><td style="background:#0F172A;color:#FFFFFF;padding:8px 12px;border-radius:6px;font-weight:700">${p} kW</td>`;
                     gaUniqBats.forEach(b => {
                         const yrs = gaPaybackMap[`${p}_${b}`];
                         const bg = gaPbColor(yrs);
@@ -1646,9 +2000,10 @@
                     { key: "_label", label: "Combo" },
                     { key: "panel_kw", label: "Panel (kW)" },
                     { key: "battery_kwh", label: "Battery (kWh)" },
-                    { key: "annual_cost_inr", label: "Est. annual cost", fmt: fmtInr },
-                    { key: "annual_savings_vs_baseline_inr", label: "Est. annual savings", fmt: fmtInr },
-                    { key: "npv_25yr_inr", label: "25-Yr NPV", fmt: fmtInr },
+                    { key: "_grid_bill", label: "Annual Grid Bill", fmt: v => v > 0 ? ("₹" + Math.round(v).toLocaleString('en-IN')) : "₹0 (Zero Bill)" },
+                    { key: "_export_profit", label: "Annual Export Profit", fmt: v => v > 0 ? ("+₹" + Math.round(v).toLocaleString('en-IN') + "/yr") : "₹0" },
+                    { key: "annual_savings_vs_baseline_inr", label: "Total Annual Savings", fmt: v => "₹" + Math.round(v).toLocaleString('en-IN') + "/yr" },
+                    { key: "npv_25yr_inr", label: "25-Yr NPV", fmt: fmtInrClean },
                     { key: "payback_years", label: "Payback (yrs)" },
                     { key: "annual_unmet_load_kwh", label: "Unmet (kWh/yr)" },
                     { key: "outage_hours_faced", label: "Outage hrs faced/yr" },
@@ -1656,26 +2011,99 @@
                 ];
                 const tableRows = [
                     {
-                        _label: "No solar/battery", panel_kw: 0, battery_kwh: 0, annual_cost_inr: b.annual_cost_inr,
+                        _label: "No solar/battery", panel_kw: 0, battery_kwh: 0,
+                        _grid_bill: b.annual_cost_inr, _export_profit: 0,
                         annual_savings_vs_baseline_inr: 0, npv_25yr_inr: 0, payback_years: "N/A", annual_unmet_load_kwh: b.annual_unmet_load_kwh,
                         outage_hours_faced: b.outage_hours_faced, outage_coverage_pct: 0.0
                     },
-                    ...combos.map(k => ({ _label: (k === d.best_combo ? "★ " : "") + d.comparisons[k].label, ...d.comparisons[k] })),
+                    ...combos.map(k => {
+                        const item = d.comparisons[k];
+                        return {
+                            _label: (k === d.best_combo ? "★ " : "") + item.label,
+                            ...item,
+                            _grid_bill: item.annual_cost_inr > 0 ? item.annual_cost_inr : 0,
+                            _export_profit: item.annual_cost_inr < 0 ? Math.abs(item.annual_cost_inr) : 0,
+                        };
+                    }),
                 ];
+
+                const tierMeta = {
+                    "grid_search_rule_based": {
+                        tierTag: "t1",
+                        tierNum: "TIER 1",
+                        tierName: "Grid Search + Rule-Based",
+                        badge: "Heuristic Baseline",
+                        desc: "Discrete 48-combination sweep evaluated under standard if-else dispatch logic."
+                    },
+                    "ga_rule_based": {
+                        tierTag: "t2",
+                        tierNum: "TIER 2",
+                        tierName: "NSGA-II + Rule-Based",
+                        badge: "Sizing Optimized",
+                        desc: "Continuous 4D Pareto exploration optimizing PV capacity, battery storage, tilt & azimuth."
+                    },
+                    "ga_dqn": {
+                        tierTag: "t3",
+                        tierNum: "TIER 3",
+                        tierName: "NSGA-II + Smart DQN",
+                        badge: "🏆 Best Co-Optimized",
+                        desc: "Full co-optimization with multi-horizon weather forecast awareness & safety shield."
+                    }
+                };
 
                 const comboCards = combos.map(k => {
                     const c = d.comparisons[k];
                     const isBest = k === d.best_combo;
-                    const npvText = c.npv_25yr_inr ? ` • 25-Yr NPV: ₹${c.npv_25yr_inr.toLocaleString('en-IN')}` : '';
-                    const pbText = c.payback_years ? ` (${c.payback_years} yr payback)` : '';
+                    const meta = tierMeta[k] || { tierTag: "t1", tierNum: "COMBO", tierName: c.label, badge: "Standard", desc: "" };
+                    const npvVal = c.npv_25yr_inr ? `₹${c.npv_25yr_inr.toLocaleString('en-IN')}` : 'N/A';
+                    const capexVal = c.total_capex_inr ? `₹${c.total_capex_inr.toLocaleString('en-IN')}` : 'N/A';
+                    const savingsVal = c.annual_savings_vs_baseline_inr ? `₹${c.annual_savings_vs_baseline_inr.toLocaleString('en-IN')}/yr` : 'N/A';
+                    const pbVal = c.payback_years ? `${c.payback_years} Yrs` : 'N/A';
+                    const winnerBadge = isBest ? `<span class="tier-badge-winner">★ RECOMMENDED CHOICE</span>` : '';
+
                     return `
-      <div class="compare-card with"${isBest ? ' style="outline:2px solid var(--teal-deep)"' : ''}>
-        <div class="ct">${c.label}${isBest ? ' ★' : ''}</div>
-        <div class="cv">${c.outage_hours_faced}<span style="font-size:14px"> hrs/yr</span></div>
-        <div class="cl">outage hours faced (of ${c.outage_hours_total} hrs/yr total)</div>
-        <div class="cl" style="margin-top:8px">System: ${c.panel_kw}kW / ${c.battery_kwh}kWh</div>
-        <div class="cl">Est. annual cost: ₹${c.annual_cost_inr.toLocaleString('en-IN')} (saves ₹${c.annual_savings_vs_baseline_inr.toLocaleString('en-IN')}/yr)</div>
-        <div class="cl">Outage coverage: ${c.outage_coverage_pct}%${npvText}${pbText}</div>
+      <div class="tier-card${isBest ? ' winner' : ''}">
+        ${winnerBadge}
+        <div class="tier-card-header">
+          <span class="tier-tag ${meta.tierTag}">${meta.tierNum} • ${meta.badge}</span>
+          <div class="tier-name">${meta.tierName}</div>
+          <div class="tier-desc">${meta.desc}</div>
+        </div>
+        <div class="tier-hardware">
+          <span>⚡ ${c.panel_kw} kW Solar</span>
+          <span>🔋 ${c.battery_kwh} kWh Battery</span>
+        </div>
+        <div class="tier-kpi-rows">
+          <div class="tier-kpi-row">
+            <span class="l">25-Yr Net Present Value:</span>
+            <span class="v${isBest ? ' green' : ''}">${npvVal}</span>
+          </div>
+          <div class="tier-kpi-row">
+            <span class="l">Annual Grid Bill:</span>
+            <span class="v">${c.annual_cost_inr <= 0 ? '₹0 (Zero Bill)' : '₹' + Math.round(c.annual_cost_inr).toLocaleString('en-IN') + '/yr'}</span>
+          </div>
+          ${c.annual_cost_inr < 0 ? `
+          <div class="tier-kpi-row">
+            <span class="l">Annual Solar Export Profit:</span>
+            <span class="v green">+₹${Math.abs(Math.round(c.annual_cost_inr)).toLocaleString('en-IN')}/yr (Profit)</span>
+          </div>` : ''}
+          <div class="tier-kpi-row">
+            <span class="l">Total Annual Grid Savings:</span>
+            <span class="v green">+${savingsVal}</span>
+          </div>
+          <div class="tier-kpi-row">
+            <span class="l">Net Upfront CapEx:</span>
+            <span class="v">${capexVal}</span>
+          </div>
+          <div class="tier-kpi-row">
+            <span class="l">Capital Payback:</span>
+            <span class="v">${pbVal}</span>
+          </div>
+          <div class="tier-kpi-row">
+            <span class="l">Outage Protection:</span>
+            <span class="v">${c.outage_coverage_pct}% (${c.outage_hours_faced} hrs/yr faced)</span>
+          </div>
+        </div>
       </div>`;
                 }).join("");
 
@@ -1688,7 +2116,7 @@
                     const dd = activeCand === "backup" ? d.backup_deep_dive : (d.npv_deep_dive || d.backup_deep_dive);
                     const isNpv = (activeCand === "npv");
 
-                    const titleText = isNpv 
+                    const titleText = isNpv
                         ? "25-Year Best NPV Deep Dive: GA + Rule-Based vs. GA + Smart DQN"
                         : "Best Outage Backup Deep Dive: GA + Rule-Based vs. GA + Smart DQN";
 
@@ -1699,23 +2127,23 @@
                     const signNpv = dd.delta.npv_25yr_diff_inr > 0 ? "+" : "";
                     const signSavings = dd.delta.annual_savings_diff_inr > 0 ? "+" : "";
                     const signCov = dd.delta.coverage_diff_pct > 0 ? "+" : "";
-                    
-                    const fasterPb = dd.delta.payback_diff_years > 0 
-                        ? `${dd.delta.payback_diff_years.toFixed(1)} Yrs Faster Payback` 
+
+                    const fasterPb = dd.delta.payback_diff_years > 0
+                        ? `${dd.delta.payback_diff_years.toFixed(1)} Yrs Faster Payback`
                         : (dd.delta.payback_diff_years === 0 ? "Equal Payback" : `${Math.abs(dd.delta.payback_diff_years).toFixed(1)} Yrs Later`);
 
                     let unmetCut = "";
                     if (dd.rule_based.annual_unmet_load_kwh === 0 && dd.dqn.annual_unmet_load_kwh === 0) {
                         unmetCut = "100% Outage Immunity (0 kWh Deficit)";
                     } else if (dd.delta.unmet_kwh_reduced > 0) {
-                        unmetCut = `-${dd.delta.unmet_kwh_reduced} kWh/yr Deficit Eliminated`;
+                        unmetCut = `${dd.delta.unmet_kwh_reduced} kWh/yr Deficit Eliminated`;
                     } else if (dd.delta.unmet_kwh_reduced === 0) {
                         unmetCut = `Equal Blackout Exposure (${dd.dqn.annual_unmet_load_kwh} kWh/yr)`;
                     } else {
                         unmetCut = `+${Math.abs(dd.delta.unmet_kwh_reduced)} kWh/yr Unmet Load`;
                     }
 
-                    const npvBadge = dd.delta.npv_25yr_diff_inr > 0 
+                    const npvBadge = dd.delta.npv_25yr_diff_inr > 0
                         ? `<span class="advantage-badge positive">+₹${dd.delta.npv_25yr_diff_inr.toLocaleString('en-IN')} (+${dd.delta.npv_pct_gain}%)</span>`
                         : (dd.delta.npv_25yr_diff_inr === 0 ? `<span class="advantage-badge neutral">Equal NPV</span>` : `<span class="advantage-badge neutral">-₹${Math.abs(dd.delta.npv_25yr_diff_inr).toLocaleString('en-IN')}</span>`);
 
@@ -1723,30 +2151,31 @@
                         ? `<span class="advantage-badge positive">+₹${dd.delta.annual_savings_diff_inr.toLocaleString('en-IN')}/yr</span>`
                         : (dd.delta.annual_savings_diff_inr === 0 ? `<span class="advantage-badge neutral">Equal Savings</span>` : `<span class="advantage-badge neutral">-₹${Math.abs(dd.delta.annual_savings_diff_inr).toLocaleString('en-IN')}/yr</span>`);
 
-                    const billBadge = dd.delta.annual_cost_diff_inr > 0
-                        ? `<span class="advantage-badge positive">-₹${dd.delta.annual_cost_diff_inr.toLocaleString('en-IN')}/yr (Lower Bill)</span>`
-                        : (dd.delta.annual_cost_diff_inr === 0 ? `<span class="advantage-badge neutral">Equal Bill</span>` : `<span class="advantage-badge neutral">+₹${Math.abs(dd.delta.annual_cost_diff_inr).toLocaleString('en-IN')}/yr</span>`);
+                    const costDiff = dd.delta.annual_cost_diff_inr || (dd.rule_based.annual_cost_inr - dd.dqn.annual_cost_inr);
+                    const billBadge = costDiff > 0
+                        ? `<span class="advantage-badge positive">+₹${Math.round(costDiff).toLocaleString('en-IN')}/yr Lower Bill</span>`
+                        : (costDiff === 0 ? `<span class="advantage-badge neutral">Equal Bill</span>` : `<span class="advantage-badge positive">+₹${Math.abs(Math.round(costDiff)).toLocaleString('en-IN')}/yr Extra Savings</span>`);
 
                     const pbBadge = dd.delta.payback_diff_years > 0
                         ? `<span class="advantage-badge positive">${dd.delta.payback_diff_years.toFixed(1)} Yrs Faster</span>`
                         : (dd.delta.payback_diff_years === 0 ? `<span class="advantage-badge neutral">Equal Payback</span>` : `<span class="advantage-badge neutral">${Math.abs(dd.delta.payback_diff_years).toFixed(1)} Yrs Later</span>`);
 
                     const irrBadge = (dd.dqn.irr_pct && dd.rule_based.irr_pct)
-                        ? (dd.dqn.irr_pct > dd.rule_based.irr_pct 
-                            ? `<span class="advantage-badge positive">+${(dd.dqn.irr_pct - dd.rule_based.irr_pct).toFixed(1)}% IRR</span>` 
+                        ? (dd.dqn.irr_pct > dd.rule_based.irr_pct
+                            ? `<span class="advantage-badge positive">+${(dd.dqn.irr_pct - dd.rule_based.irr_pct).toFixed(1)}% IRR</span>`
                             : (dd.dqn.irr_pct === dd.rule_based.irr_pct ? `<span class="advantage-badge neutral">Equal IRR</span>` : `<span class="advantage-badge neutral">${(dd.dqn.irr_pct - dd.rule_based.irr_pct).toFixed(1)}% IRR</span>`))
                         : `<span class="advantage-badge neutral">Verified</span>`;
 
                     const unmetBadge = dd.delta.unmet_kwh_reduced > 0
-                        ? `<span class="advantage-badge positive">-${dd.delta.unmet_kwh_reduced} kWh/yr Deficit Eliminated</span>`
-                        : (dd.dqn.annual_unmet_load_kwh === 0 && dd.rule_based.annual_unmet_load_kwh === 0 
-                            ? `<span class="advantage-badge positive">🛡️ 100% Outage Immune (0 kWh)</span>` 
+                        ? `<span class="advantage-badge positive">${dd.delta.unmet_kwh_reduced} kWh/yr Deficit Eliminated</span>`
+                        : (dd.dqn.annual_unmet_load_kwh === 0 && dd.rule_based.annual_unmet_load_kwh === 0
+                            ? `<span class="advantage-badge positive">🛡️ 100% Outage Immune (0 kWh)</span>`
                             : `<span class="advantage-badge neutral">Equal (${dd.dqn.annual_unmet_load_kwh} kWh/yr)</span>`);
 
                     const covBadge = dd.delta.coverage_diff_pct > 0
                         ? `<span class="advantage-badge positive">+${dd.delta.coverage_diff_pct}% Reliability Uplift</span>`
-                        : (dd.dqn.outage_coverage_pct === 100 
-                            ? `<span class="advantage-badge positive">100% Full Outage Coverage</span>` 
+                        : (dd.dqn.outage_coverage_pct === 100
+                            ? `<span class="advantage-badge positive">100% Full Outage Coverage</span>`
                             : `<span class="advantage-badge neutral">Equal Coverage (${dd.dqn.outage_coverage_pct}%)</span>`);
 
                     let toggleButtonsHtml = "";
@@ -1816,11 +2245,18 @@
                   <td>${npvBadge}</td>
                 </tr>
                 <tr>
-                  <td><b>Annual Electricity Cost</b></td>
-                  <td>₹${dd.rule_based.annual_cost_inr.toLocaleString('en-IN')}</td>
-                  <td><b style="color:#0F766E">₹${dd.dqn.annual_cost_inr.toLocaleString('en-IN')}</b></td>
+                  <td><b>Annual Grid Electricity Bill</b></td>
+                  <td>${dd.rule_based.annual_cost_inr <= 0 ? '₹0 (Zero Bill)' : '₹' + Math.round(dd.rule_based.annual_cost_inr).toLocaleString('en-IN') + '/yr'}</td>
+                  <td><b style="color:#0F766E">${dd.dqn.annual_cost_inr <= 0 ? '₹0 (Zero Bill)' : '₹' + Math.round(dd.dqn.annual_cost_inr).toLocaleString('en-IN') + '/yr'}</b></td>
                   <td>${billBadge}</td>
                 </tr>
+                ${(dd.rule_based.annual_cost_inr < 0 || dd.dqn.annual_cost_inr < 0) ? `
+                <tr>
+                  <td><b>Annual Solar Export Profit</b></td>
+                  <td>${dd.rule_based.annual_cost_inr < 0 ? '+₹' + Math.abs(Math.round(dd.rule_based.annual_cost_inr)).toLocaleString('en-IN') + '/yr (Profit)' : '₹0'}</td>
+                  <td><b style="color:#0F766E">${dd.dqn.annual_cost_inr < 0 ? '+₹' + Math.abs(Math.round(dd.dqn.annual_cost_inr)).toLocaleString('en-IN') + '/yr (Profit)' : '₹0'}</b></td>
+                  <td><span class="advantage-badge positive">+₹${Math.abs(Math.round(costDiff)).toLocaleString('en-IN')}/yr Net Gain</span></td>
+                </tr>` : ''}
                 <tr>
                   <td><b>Annual Net Savings vs Grid</b></td>
                   <td>₹${dd.rule_based.annual_savings_inr.toLocaleString('en-IN')}</td>
@@ -1874,8 +2310,28 @@
         </div>`;
                 }
 
+                const pdfHeaderHtml = `
+        <div class="report-action-header">
+          <div class="rah-info">
+            <div class="rah-badge">📑 OFFICIAL CAPSTONE DELIVERABLE • 3-TIER COMPARISON</div>
+            <div class="rah-title">Download 3-Combination Executive Audit Report (PDF)</div>
+            <div class="rah-sub">
+              Compiles a complete publication-quality PDF comparing <b>Grid Search + Rule-Based</b> vs. <b>NSGA-II + Rule-Based</b> vs. <b>NSGA-II + Smart DQN 🏆</b> with PM Surya Ghar subsidy deductions, 25-year NPV, and outage protection metrics.
+            </div>
+          </div>
+          <div class="rah-actions">
+            <button class="pdf-btn primary" id="btn-download-pdf-top" onclick="downloadCombinedPdf()">
+              <span class="icon">📥</span> Download Executive PDF
+            </button>
+            <button class="pdf-btn secondary" onclick="window.print()">
+              <span class="icon">🖨️</span> Print Dossier
+            </button>
+          </div>
+        </div>`;
+
                 el.innerHTML = `
       <div class="panel">
+        ${pdfHeaderHtml}
         ${deepDiveHtml}
         <p class="section-label">Overall Sizing + Controller Matrix (Annualized Estimates)</p>
         <p class="table-note">All figures below are annualized estimates, extrapolated (× 365/${d.episode_days}) from one simulated ${d.episode_days}-day episode — not a full-year simulation. Use for relative comparison between combos, not as a precise annual bill forecast.</p>
@@ -1884,15 +2340,15 @@
             <div class="ct">WITHOUT SOLAR + BATTERY</div>
             <div class="cv">${b.outage_hours_faced}<span style="font-size:14px"> hrs/yr</span></div>
             <div class="cl">outage hours faced — 100% grid-dependent, so this equals total outage exposure (${b.outage_hours_total} hrs/yr)</div>
-            <div class="cl" style="margin-top:8px">Est. annual cost: ₹${b.annual_cost_inr.toLocaleString('en-IN')}</div>
+            <div class="cl" style="margin-top:8px">Est. annual grid bill: ${fmtInr(b.annual_cost_inr)}</div>
             <div class="cl">Est. annual unmet load: ${b.annual_unmet_load_kwh} kWh</div>
           </div>
         </div>
-        <div class="rec-grid" style="margin-top:16px">${comboCards}</div>
-        <p class="chart-sublabel" style="margin-top:20px">All combinations — outage hours faced vs annual cost</p>
+        <div class="tier-cards-grid">${comboCards}</div>
+        <p class="chart-sublabel" style="margin-top:20px">All combinations — Outage hours faced vs. Annual grid bill &amp; export profit</p>
         <canvas id="chart-outage_proof" height="100"></canvas>
         ${dataTable(tableRows, cols)}
-        <p class="table-note">★ = highest annual savings among configurations with maximum outage protection (100% blackout resilience). A combo can be missing here if its controller stage failed or was blocked (e.g. DQN with no trained policy file).</p>
+        <p class="table-note">★ = Recommended optimal tier. If solar generates net profit, annual grid bill is ₹0 and export income is shown in Annual Export Profit.</p>
       </div>`;
                 destroyChartsWithPrefix("outage_proof");
                 charts.outage_proof = new Chart(document.getElementById("chart-outage_proof"), {
@@ -1900,15 +2356,16 @@
                         labels: labels,
                         datasets: [
                             { type: "bar", label: "Outage hours faced/yr", data: [b.outage_hours_faced, ...combos.map(k => d.comparisons[k].outage_hours_faced)], backgroundColor: "rgba(181,83,60,0.55)", borderColor: "#7A3626", yAxisID: "y" },
-                            { type: "line", label: "Est. annual cost (₹)", data: [b.annual_cost_inr, ...combos.map(k => d.comparisons[k].annual_cost_inr)], borderColor: "#1B4448", backgroundColor: "#1B4448", yAxisID: "y1", tension: 0.2 },
+                            { type: "line", label: "Annual Grid Bill (₹)", data: [b.annual_cost_inr, ...combos.map(k => Math.max(0, d.comparisons[k].annual_cost_inr))], borderColor: "#1E293B", backgroundColor: "#1E293B", yAxisID: "y1", tension: 0.2 },
+                            { type: "line", label: "Annual Export Profit (₹)", data: [0, ...combos.map(k => Math.max(0, -d.comparisons[k].annual_cost_inr))], borderColor: "#059669", backgroundColor: "#059669", yAxisID: "y1", tension: 0.2 },
                         ]
                     },
                     options: {
-                        plugins: { legend: { display: true, labels: { boxWidth: 12, font: { size: 11 } } } },
+                        plugins: { legend: { display: true, labels: { boxWidth: 12, font: { size: 11, weight: '600' } } } },
                         scales: {
                             x: { grid: { display: false } },
-                            y: { position: "left", title: { display: true, text: "Outage hours faced / yr" }, grid: { color: "#EFEEE8" } },
-                            y1: { position: "right", title: { display: true, text: "Est. annual cost (₹)" }, grid: { display: false } },
+                            y: { position: "left", title: { display: true, text: "Outage hours faced / yr" }, grid: { color: "#EFEEE8" }, min: 0 },
+                            y1: { position: "right", title: { display: true, text: "Annual Financial Metric (₹/yr)" }, grid: { display: false }, min: 0 },
                         }
                     },
                 });
@@ -2017,6 +2474,68 @@
                     }
                 },
             });
+        }
+
+        async function downloadCombinedPdf() {
+            const outageData = stageResults["outage_proof"];
+            if (!currentJobId && !outageData) {
+                alert("⚠️ Simulation Not Run Yet!\n\nPlease enter your household parameters and click 'Run full pipeline' first.\n\nThe customized 3-combination executive audit report is generated strictly from the simulation results of your specific scenario.");
+                return;
+            }
+
+            const btns = document.querySelectorAll(".pdf-btn.primary");
+            btns.forEach(b => {
+                b.dataset.origHtml = b.innerHTML;
+                b.innerHTML = `<span class="icon">⏳</span> Generating PDF Dossier...`;
+                b.disabled = true;
+            });
+
+            try {
+                let resp;
+                if (currentJobId) {
+                    resp = await fetch(API_BASE + "/api/pipeline/report/pdf/" + currentJobId);
+                } else if (outageData) {
+                    const cityEl = document.getElementById("in-city");
+                    const billEl = document.getElementById("in-bill");
+                    resp = await fetch(API_BASE + "/api/pipeline/report/generate_pdf", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            outage_proof_data: outageData,
+                            job_params: {
+                                city: cityEl ? cityEl.value : "Bengaluru",
+                                monthly_bill_inr: billEl ? parseFloat(billEl.value) : 2400,
+                                subsidy_eligible: true
+                            }
+                        })
+                    });
+                }
+
+                if (!resp || !resp.ok) {
+                    const errText = resp ? await resp.text() : "Simulation result not ready or network error";
+                    throw new Error(errText);
+                }
+
+                const blob = await resp.blob();
+                const downloadUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = downloadUrl;
+                const cityEl = document.getElementById("in-city");
+                const cityName = cityEl ? cityEl.value : "Executive";
+                a.download = `IEMS_3Combo_Executive_Report_${cityName}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(downloadUrl);
+            } catch (err) {
+                console.error("PDF download error:", err);
+                alert("Could not download executive PDF: " + err.message + "\nEnsure FastAPI backend is running: uvicorn app:app --reload --port 8000");
+            } finally {
+                btns.forEach(b => {
+                    b.innerHTML = b.dataset.origHtml || `<span class="icon">📥</span> Download Executive PDF`;
+                    b.disabled = false;
+                });
+            }
         }
 
         // Initial render

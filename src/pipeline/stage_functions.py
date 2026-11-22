@@ -42,7 +42,7 @@ from loguru import logger
 from src.grid.grid_model import GridModel
 from src.environment.energy_env import EnergyEnv, UNMET_LOAD_PENALTY_RATE_INR
 from src.controllers.rule_based import RuleBasedController
-from src.controllers.mpc_controller import MPCController
+# MPCController removed: pipeline demo runs 100% on Rule-Based and Smart DQN combinations
 from src.controllers.dqn_controller import DQNController
 from src.sizing.grid_search import run_grid_search, top_recommendations, simulate_system_size
 from src.report.financials import full_financial_analysis

@@ -69,9 +69,11 @@ python -m http.server 5500
 ```
 Then visit: `http://localhost:5500/pipeline_demo.html`
 
-### Step 3: Run Full Pipeline
-1. Enter **Monthly bill (₹)** (e.g. ₹3,000, ₹4,000).
-2. Select **City** (e.g. Mumbai, Kolkata, Delhi, Mathura).
+> **Tip:** Visiting via `http://localhost:8000/demo` automatically serves `no-cache` headers, ensuring high-contrast radar cards and the latest styling render cleanly without browser caching issues.
+
+### Step 3: Run Full Pipeline & Download PDF Report
+1. Enter **Monthly bill (₹)** (e.g. ₹2,400, ₹3,000, ₹4,000).
+2. Select **City** (e.g. Bengaluru, Mumbai, Kolkata, Delhi, Mathura).
 3. Select **Subsidy** (Yes / No).
 4. Click **Run full pipeline →** and watch all stages compute live in ~35 seconds:
    - Synthetic Load Profiler (400 days from UP smart-meter archetypes)
@@ -80,6 +82,9 @@ Then visit: `http://localhost:5500/pipeline_demo.html`
    - Genetic Algorithm (NSGA-II continuous Pareto optimization)
    - Inverter Dispatch (Rule-Based vs. Smart Forecast-Aware DQN)
    - Final Report (Annualized financial and outage resilience comparison)
+5. **Download Executive PDF Report:**
+   - Click the green **📥 Download Executive PDF** button in the top parameter bar, the **Download PDF Dossier** banner in the Final Report tab, or the **floating action button** in the bottom-right corner.
+   - The report audits all 3 tiers (**Grid Search + Rule-Based**, **GA + Rule-Based**, **GA + Smart DQN 🏆**) with zero-negative accounting and PM Surya Ghar subsidies.
 
 ---
 

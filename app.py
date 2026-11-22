@@ -480,6 +480,27 @@ def size_system(req: SizingRequest) -> dict:
 
 @app.get("/")
 def root():
+    from starlette.responses import FileResponse
+    return FileResponse("pipeline_demo.html", media_type="text/html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
+
+@app.get("/demo")
+@app.get("/pipeline")
+@app.get("/pipeline_demo.html")
+def serve_pipeline_demo():
+    from starlette.responses import FileResponse
+    return FileResponse("pipeline_demo.html", media_type="text/html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
+
+@app.get("/contractor")
+@app.get("/iems_contractor_ui.html")
+def serve_contractor_ui():
+    from starlette.responses import FileResponse
+    return FileResponse("iems_contractor_ui.html", media_type="text/html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
+
+@app.get("/api/info")
+def api_info():
     return {
         "message": "IEMS Sizing API",
         "health": "/api/health",

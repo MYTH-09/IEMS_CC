@@ -44,12 +44,12 @@ import asyncio
 import os
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 from loguru import logger
 
 from src.pipeline.orchestrator import (
-    create_job, run_pipeline_job, get_job_status, get_stage_result, STAGE_DEPENDENCIES,
+    create_job, run_pipeline_job, get_job_status, get_stage_result, get_job_params, STAGE_DEPENDENCIES,
 )
 from src.pipeline.stage_functions import STAGE_FUNCTIONS
 from src.resource_limits import resolve_worker_count
@@ -146,3 +146,69 @@ async def pipeline_stage_result(job_id: str, stage_name: str) -> dict:
     NON_SERIALIZABLE_KEYS = {"load_kw", "timestamps", "solar_kw_per_kwp"}
     clean_result = {k: v for k, v in result.items() if k not in NON_SERIALIZABLE_KEYS}
     return clean_result
+
+
+@router.get("/report/pdf/{job_id}")
+async def download_pipeline_pdf(job_id: str):
+    """
+    Generate and stream a professional 3-Combination Executive Audit Dossier (PDF)
+    for the completed pipeline job.
+    """
+    status = get_job_status(job_id)
+    if status is None:
+        raise HTTPException(404, f"Unknown job_id: {job_id}")
+
+    outage_res = get_stage_result(job_id, "outage_proof")
+    if outage_res is None:
+        raise HTTPException(
+            409,
+            "Final Report (outage_proof) stage is not completed yet. Please wait for the pipeline to finish.",
+        )
+
+    params = get_job_params(job_id) or {}
+    city_name = params.get("city", "Report")
+    
+    from src.report.pdf_generator import generate_combined_executive_pdf
+    try:
+        pdf_bytes = generate_combined_executive_pdf(outage_proof_data=outage_res, job_params=params)
+    except Exception as exc:
+        logger.error(f"Failed to generate combined PDF report for job {job_id}: {exc}")
+        raise HTTPException(500, f"Error generating PDF dossier: {exc}")
+
+    filename = f"IEMS_3Combo_Executive_Report_{city_name}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+
+@router.post("/report/generate_pdf")
+async def generate_pdf_from_payload(payload: dict):
+    """
+    Directly compiles and returns an executive PDF report given any outage_proof_data dict.
+    Enables instant downloads from client-side cached payloads.
+    """
+    outage_data = payload.get("outage_proof_data", payload)
+    params = payload.get("job_params", {})
+    city_name = params.get("city", "Report")
+
+    from src.report.pdf_generator import generate_combined_executive_pdf
+    try:
+        pdf_bytes = generate_combined_executive_pdf(outage_proof_data=outage_data, job_params=params)
+    except Exception as exc:
+        logger.error(f"Failed to generate custom PDF report: {exc}")
+        raise HTTPException(500, f"Error generating PDF dossier: {exc}")
+
+    filename = f"IEMS_3Combo_Executive_Report_{city_name}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
